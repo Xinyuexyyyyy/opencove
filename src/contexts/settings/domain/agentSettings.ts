@@ -8,6 +8,8 @@ import type {
   AgentCustomModelEnabledByProvider,
   AgentCustomModelOptionsByProvider,
 } from './agentSettings.customModels'
+import type { AgentExecutablePathOverrideByProvider } from './agentSettings.executables'
+import { normalizeAgentExecutablePathOverrideByProvider } from './agentSettings.executables'
 import {
   AGENT_PROVIDERS,
   isTaskTitleAgentProvider,
@@ -56,6 +58,10 @@ import type { AgentEnvByProvider } from './agentEnv'
 import { normalizeAgentEnvByProvider } from './agentEnv'
 import { normalizeWebsiteWindowPolicy } from './websiteWindowSettings'
 import { DEFAULT_AGENT_SETTINGS } from './agentSettings.defaults'
+import {
+  normalizeTerminalDisplayReference,
+  type TerminalDisplayReference,
+} from './terminalDisplayCalibration'
 
 export {
   FOCUS_NODE_TARGET_ZOOM_STEP,
@@ -99,6 +105,7 @@ export {
 export type { UiLanguage, UiTheme, UiThemeBaseScheme, UiThemeDescriptor } from './uiSettings'
 
 export type TerminalProfileId = string | null
+export type { TerminalDisplayReference } from './terminalDisplayCalibration'
 export const MIN_DEFAULT_TERMINAL_WINDOW_SCALE_PERCENT = 60
 export const MAX_DEFAULT_TERMINAL_WINDOW_SCALE_PERCENT = 120
 export const MIN_TERMINAL_FONT_SIZE = 10
@@ -122,7 +129,9 @@ export type { TaskPromptTemplate, TaskPromptTemplatesByWorkspaceId } from './tas
 export type { QuickCommand } from './quickCommands'
 export type { QuickPhrase } from './quickPhrases'
 export type { AgentEnvByProvider, AgentEnvRow } from './agentEnv'
+export type { AgentExecutablePathOverrideByProvider } from './agentSettings.executables'
 export {
+  resolveAgentExecutablePathOverride,
   resolveAgentLaunchEnv,
   resolveAgentModel,
   resolveTaskTitleModel,
@@ -139,6 +148,7 @@ export interface AgentSettings {
   agentProviderOrder: AgentProvider[]
   agentFullAccess: boolean
   defaultTerminalProfileId: TerminalProfileId
+  agentExecutablePathOverrideByProvider: AgentExecutablePathOverrideByProvider<AgentProvider>
   customModelEnabledByProvider: AgentCustomModelEnabledByProvider<AgentProvider>
   customModelByProvider: AgentCustomModelByProvider<AgentProvider>
   customModelOptionsByProvider: AgentCustomModelOptionsByProvider<AgentProvider>
@@ -153,6 +163,7 @@ export interface AgentSettings {
   focusNodeOnClick: boolean
   focusNodeTargetZoom: FocusNodeTargetZoom
   focusNodeUseVisibleCanvasCenter: boolean
+  systemNotificationsEnabled: boolean
   standbyBannerEnabled: boolean
   standbyBannerShowTask: boolean
   standbyBannerShowSpace: boolean
@@ -170,6 +181,9 @@ export interface AgentSettings {
   defaultTerminalWindowScalePercent: number
   terminalFontSize: number
   terminalFontFamily: string | null
+  terminalDisplayAutoReferenceEnabled: boolean
+  terminalDisplayCalibrationCompensationEnabled: boolean
+  terminalDisplayReference: TerminalDisplayReference | null
   uiFontSize: number
   githubPullRequestsEnabled: boolean
   updatePolicy: AppUpdatePolicy
@@ -211,6 +225,9 @@ export function normalizeAgentSettings(value: unknown): AgentSettings {
   const agentFullAccess =
     normalizeBoolean(value.agentFullAccess) ?? DEFAULT_AGENT_SETTINGS.agentFullAccess
   const defaultTerminalProfileId = normalizeTextValue(value.defaultTerminalProfileId)
+  const agentExecutablePathOverrideByProvider = normalizeAgentExecutablePathOverrideByProvider(
+    value.agentExecutablePathOverrideByProvider,
+  )
 
   const enabledInput = isRecord(value.customModelEnabledByProvider)
     ? value.customModelEnabledByProvider
@@ -297,6 +314,9 @@ export function normalizeAgentSettings(value: unknown): AgentSettings {
   const focusNodeUseVisibleCanvasCenter =
     normalizeBoolean(value.focusNodeUseVisibleCanvasCenter) ??
     DEFAULT_AGENT_SETTINGS.focusNodeUseVisibleCanvasCenter
+  const systemNotificationsEnabled =
+    normalizeBoolean(value.systemNotificationsEnabled) ??
+    DEFAULT_AGENT_SETTINGS.systemNotificationsEnabled
   const standbyBannerEnabled =
     normalizeBoolean(value.standbyBannerEnabled) ?? DEFAULT_AGENT_SETTINGS.standbyBannerEnabled
   const standbyBannerShowTask =
@@ -351,6 +371,14 @@ export function normalizeAgentSettings(value: unknown): AgentSettings {
     typeof value.terminalFontFamily === 'string' && value.terminalFontFamily.trim().length > 0
       ? value.terminalFontFamily.trim()
       : DEFAULT_AGENT_SETTINGS.terminalFontFamily
+  const terminalDisplayAutoReferenceEnabled =
+    normalizeBoolean(value.terminalDisplayAutoReferenceEnabled) ??
+    normalizeBoolean(value.terminalDisplayAutoCalibrationEnabled) ??
+    DEFAULT_AGENT_SETTINGS.terminalDisplayAutoReferenceEnabled
+  const terminalDisplayCalibrationCompensationEnabled =
+    normalizeBoolean(value.terminalDisplayCalibrationCompensationEnabled) ??
+    DEFAULT_AGENT_SETTINGS.terminalDisplayCalibrationCompensationEnabled
+  const terminalDisplayReference = normalizeTerminalDisplayReference(value.terminalDisplayReference)
   const legacyUiFontScalePercent = normalizeIntegerInRange(
     value.uiFontScalePercent,
     Math.round((DEFAULT_AGENT_SETTINGS.uiFontSize / 16) * 100),
@@ -401,6 +429,7 @@ export function normalizeAgentSettings(value: unknown): AgentSettings {
       defaultTerminalProfileId.length > 0
         ? defaultTerminalProfileId
         : DEFAULT_AGENT_SETTINGS.defaultTerminalProfileId,
+    agentExecutablePathOverrideByProvider,
     customModelEnabledByProvider,
     customModelByProvider,
     customModelOptionsByProvider,
@@ -415,6 +444,7 @@ export function normalizeAgentSettings(value: unknown): AgentSettings {
     focusNodeOnClick,
     focusNodeTargetZoom,
     focusNodeUseVisibleCanvasCenter,
+    systemNotificationsEnabled,
     standbyBannerEnabled,
     standbyBannerShowTask,
     standbyBannerShowSpace,
@@ -432,6 +462,9 @@ export function normalizeAgentSettings(value: unknown): AgentSettings {
     defaultTerminalWindowScalePercent,
     terminalFontSize,
     terminalFontFamily,
+    terminalDisplayAutoReferenceEnabled,
+    terminalDisplayCalibrationCompensationEnabled,
+    terminalDisplayReference,
     uiFontSize,
     githubPullRequestsEnabled,
     updatePolicy,

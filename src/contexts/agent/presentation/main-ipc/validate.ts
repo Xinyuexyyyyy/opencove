@@ -1,6 +1,7 @@
 import type {
   AgentProviderId,
   LaunchAgentInput,
+  ListAgentSessionsInput,
   ListAgentModelsInput,
   ReadAgentLastMessageInput,
   ResolveAgentResumeSessionInput,
@@ -24,6 +25,7 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 const MAX_AGENT_LAUNCH_ENV_ENTRIES = 200
 const MAX_AGENT_LAUNCH_ENV_KEY_LENGTH = 120
 const MAX_AGENT_LAUNCH_ENV_VALUE_LENGTH = 10_000
+const MAX_AGENT_SESSION_LIST_LIMIT = 100
 const AGENT_LAUNCH_ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
 const AGENT_LAUNCH_ENV_RESERVED_PREFIX = 'OPENCOVE_'
 
@@ -84,6 +86,59 @@ export function normalizeListModelsPayload(payload: unknown): ListAgentModelsInp
 
   return {
     provider: normalizeProvider(record.provider),
+    executablePathOverride:
+      typeof record.executablePathOverride === 'string'
+        ? record.executablePathOverride.trim() || null
+        : null,
+  }
+}
+
+export function normalizeListSessionsPayload(payload: unknown): ListAgentSessionsInput {
+  if (!payload || typeof payload !== 'object') {
+    throw createAppError('common.invalid_input', {
+      debugMessage: 'Invalid payload for agent:list-sessions',
+    })
+  }
+
+  const record = payload as Record<string, unknown>
+  const provider = normalizeProvider(record.provider)
+  const cwd = typeof record.cwd === 'string' ? record.cwd.trim() : ''
+  const rawLimit = record.limit
+
+  if (cwd.length === 0) {
+    throw createAppError('common.invalid_input', {
+      debugMessage: 'Invalid cwd for agent:list-sessions',
+    })
+  }
+
+  if (!isAbsoluteWorkspacePath(cwd)) {
+    throw createAppError('common.invalid_input', {
+      debugMessage: 'agent:list-sessions requires an absolute cwd',
+    })
+  }
+
+  let limit: number | null = null
+  if (rawLimit !== undefined && rawLimit !== null) {
+    if (typeof rawLimit !== 'number' || !Number.isFinite(rawLimit)) {
+      throw createAppError('common.invalid_input', {
+        debugMessage: 'Invalid limit for agent:list-sessions',
+      })
+    }
+
+    const normalizedLimit = Math.floor(rawLimit)
+    if (normalizedLimit <= 0) {
+      throw createAppError('common.invalid_input', {
+        debugMessage: 'agent:list-sessions requires a positive limit',
+      })
+    }
+
+    limit = Math.min(normalizedLimit, MAX_AGENT_SESSION_LIST_LIMIT)
+  }
+
+  return {
+    provider,
+    cwd,
+    limit,
   }
 }
 
@@ -228,6 +283,8 @@ export function normalizeLaunchAgentPayload(payload: unknown): LaunchAgentInput 
     typeof record.resumeSessionId === 'string' ? record.resumeSessionId.trim() : ''
 
   const env = normalizeAgentLaunchEnv(record.env)
+  const executablePathOverride =
+    typeof record.executablePathOverride === 'string' ? record.executablePathOverride.trim() : ''
 
   const agentFullAccess =
     typeof record.agentFullAccess === 'boolean' ? record.agentFullAccess : true
@@ -262,6 +319,7 @@ export function normalizeLaunchAgentPayload(payload: unknown): LaunchAgentInput 
     model: model.length > 0 ? model : null,
     resumeSessionId: resumeSessionId.length > 0 ? resumeSessionId : null,
     env,
+    executablePathOverride: executablePathOverride.length > 0 ? executablePathOverride : null,
     agentFullAccess,
     cols,
     rows,

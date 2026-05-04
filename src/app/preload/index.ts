@@ -16,6 +16,9 @@ import type {
   KillTerminalInput,
   LaunchAgentInput,
   LaunchAgentResult,
+  ListAgentSessionsInput,
+  ListAgentSessionsResult,
+  ListInstalledAgentProvidersInput,
   ListInstalledAgentProvidersResult,
   ListGitBranchesInput,
   ListGitBranchesResult,
@@ -44,6 +47,8 @@ import type {
   ReadAgentNodePlaceholderScrollbackInput,
   ReadNodeScrollbackInput,
   ResizeTerminalInput,
+  PresentationSnapshotTerminalInput,
+  PresentationSnapshotTerminalResult,
   RemoveGitWorktreeInput,
   RemoveGitWorktreeResult,
   RenameGitBranchInput,
@@ -51,15 +56,17 @@ import type {
   SnapshotTerminalResult,
   SpawnTerminalInput,
   SpawnTerminalResult,
-  SyncPtyAgentPlaceholderBindingsInput,
-  SyncPtySessionBindingsInput,
   SuggestTaskTitleInput,
   SuggestTaskTitleResult,
   SuggestWorktreeNamesInput,
   SuggestWorktreeNamesResult,
   SetWindowChromeThemeInput,
+  ShowSystemNotificationInput,
+  ShowSystemNotificationResult,
   TerminalDataEvent,
   TerminalExitEvent,
+  TerminalGeometryEvent,
+  TerminalResyncEvent,
   TerminalSessionMetadataEvent,
   TerminalSessionStateEvent,
   WorkspaceDirectory,
@@ -105,41 +112,12 @@ import type {
   CliPathStatusResult,
 } from '../../shared/contracts/dto'
 import { invokeIpc } from './ipcInvoke'
-import { resolveMainProcessPid } from './mainProcessPid'
-
+import { resolveOpenCoveMeta } from './opencoveMeta'
 type UnsubscribeFn = () => void
-
-function resolveWindowsPtyMeta(): { backend: 'conpty'; buildNumber: number } | null {
-  if (process.platform !== 'win32') {
-    return null
-  }
-
-  const systemVersion =
-    typeof process.getSystemVersion === 'function' ? process.getSystemVersion() : ''
-  const build = Number.parseInt(systemVersion.split('.')[2] ?? '', 10)
-  if (!Number.isFinite(build) || build <= 0) {
-    return null
-  }
-
-  return {
-    backend: 'conpty',
-    buildNumber: build,
-  }
-}
-
-// Custom APIs for renderer
+const latestPtyStateBySessionId = new Map<string, TerminalSessionStateEvent>(),
+  latestPtyMetadataBySessionId = new Map<string, TerminalSessionMetadataEvent>()
 const opencoveApi = {
-  meta: {
-    isTest: process.env.NODE_ENV === 'test',
-    isPackaged: process.env.NODE_ENV !== 'test' && process.defaultApp !== true,
-    allowWhatsNewInTests: process.env.OPENCOVE_TEST_WHATS_NEW === '1',
-    enableTerminalDiagnostics: process.env.OPENCOVE_TERMINAL_DIAGNOSTICS === '1',
-    enableTerminalInputDiagnostics: process.env.OPENCOVE_TERMINAL_INPUT_DIAGNOSTICS === '1',
-    runtime: 'electron',
-    platform: process.platform,
-    mainPid: resolveMainProcessPid(),
-    windowsPty: resolveWindowsPtyMeta(),
-  },
+  meta: resolveOpenCoveMeta(),
   debug: {
     logTerminalDiagnostics: (payload: TerminalDiagnosticsLogInput): void => {
       ipcRenderer.send(IPC_CHANNELS.terminalDiagnosticsLog, payload)
@@ -226,7 +204,6 @@ const opencoveApi = {
         if (!requestId) {
           return
         }
-
         void Promise.resolve()
           .then(() => listener({ requestId }))
           .catch(() => undefined)
@@ -234,9 +211,7 @@ const opencoveApi = {
             ipcRenderer.send(IPC_CHANNELS.appPersistFlushComplete, { requestId })
           })
       }
-
       ipcRenderer.on(IPC_CHANNELS.appRequestPersistFlush, handler)
-
       return () => {
         ipcRenderer.removeListener(IPC_CHANNELS.appRequestPersistFlush, handler)
       }
@@ -247,9 +222,7 @@ const opencoveApi = {
       const handler = (_event: Electron.IpcRendererEvent, payload: SyncEventPayload) => {
         listener(payload)
       }
-
       ipcRenderer.on(IPC_CHANNELS.syncStateUpdated, handler)
-
       return () => {
         ipcRenderer.removeListener(IPC_CHANNELS.syncStateUpdated, handler)
       }
@@ -377,13 +350,12 @@ const opencoveApi = {
       invokeIpc(IPC_CHANNELS.ptyAttach, payload),
     detach: (payload: DetachTerminalInput): Promise<void> =>
       invokeIpc(IPC_CHANNELS.ptyDetach, payload),
-    syncSessionBindings: (payload: SyncPtySessionBindingsInput): Promise<void> =>
-      invokeIpc(IPC_CHANNELS.ptySyncSessionBindings, payload),
-    syncAgentPlaceholderBindings: (payload: SyncPtyAgentPlaceholderBindingsInput): Promise<void> =>
-      invokeIpc(IPC_CHANNELS.ptySyncAgentPlaceholderBindings, payload),
-    flushScrollbackMirrors: (): Promise<void> => invokeIpc(IPC_CHANNELS.ptyFlushScrollbackMirrors),
     snapshot: (payload: SnapshotTerminalInput): Promise<SnapshotTerminalResult> =>
       invokeIpc(IPC_CHANNELS.ptySnapshot, payload),
+    presentationSnapshot: (
+      payload: PresentationSnapshotTerminalInput,
+    ): Promise<PresentationSnapshotTerminalResult> =>
+      invokeIpc(IPC_CHANNELS.ptyPresentationSnapshot, payload),
     debugCrashHost: (): Promise<void> => invokeIpc(IPC_CHANNELS.ptyDebugCrashHost),
     onData: (listener: (event: TerminalDataEvent) => void): UnsubscribeFn => {
       const handler = (_event: Electron.IpcRendererEvent, payload: TerminalDataEvent) => {
@@ -407,12 +379,38 @@ const opencoveApi = {
         ipcRenderer.removeListener(IPC_CHANNELS.ptyExit, handler)
       }
     },
+    onGeometry: (listener: (event: TerminalGeometryEvent) => void): UnsubscribeFn => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: TerminalGeometryEvent) => {
+        listener(payload)
+      }
+
+      ipcRenderer.on(IPC_CHANNELS.ptyGeometry, handler)
+
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.ptyGeometry, handler)
+      }
+    },
+    onResync: (listener: (event: TerminalResyncEvent) => void): UnsubscribeFn => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: TerminalResyncEvent) => {
+        listener(payload)
+      }
+
+      ipcRenderer.on(IPC_CHANNELS.ptyResync, handler)
+
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.ptyResync, handler)
+      }
+    },
     onState: (listener: (event: TerminalSessionStateEvent) => void): UnsubscribeFn => {
       const handler = (_event: Electron.IpcRendererEvent, payload: TerminalSessionStateEvent) => {
+        latestPtyStateBySessionId.set(payload.sessionId, payload)
         listener(payload)
       }
 
       ipcRenderer.on(IPC_CHANNELS.ptyState, handler)
+      latestPtyStateBySessionId.forEach(payload => {
+        listener(payload)
+      })
 
       return () => {
         ipcRenderer.removeListener(IPC_CHANNELS.ptyState, handler)
@@ -423,10 +421,14 @@ const opencoveApi = {
         _event: Electron.IpcRendererEvent,
         payload: TerminalSessionMetadataEvent,
       ) => {
+        latestPtyMetadataBySessionId.set(payload.sessionId, payload)
         listener(payload)
       }
 
       ipcRenderer.on(IPC_CHANNELS.ptySessionMetadata, handler)
+      latestPtyMetadataBySessionId.forEach(payload => {
+        listener(payload)
+      })
 
       return () => {
         ipcRenderer.removeListener(IPC_CHANNELS.ptySessionMetadata, handler)
@@ -436,8 +438,12 @@ const opencoveApi = {
   agent: {
     listModels: (payload: ListAgentModelsInput): Promise<ListAgentModelsResult> =>
       invokeIpc(IPC_CHANNELS.agentListModels, payload),
-    listInstalledProviders: (): Promise<ListInstalledAgentProvidersResult> =>
-      invokeIpc(IPC_CHANNELS.agentListInstalledProviders),
+    listInstalledProviders: (
+      payload?: ListInstalledAgentProvidersInput,
+    ): Promise<ListInstalledAgentProvidersResult> =>
+      invokeIpc(IPC_CHANNELS.agentListInstalledProviders, payload),
+    listSessions: (payload: ListAgentSessionsInput): Promise<ListAgentSessionsResult> =>
+      invokeIpc(IPC_CHANNELS.agentListSessions, payload),
     launch: (payload: LaunchAgentInput): Promise<LaunchAgentResult> =>
       invokeIpc(IPC_CHANNELS.agentLaunch, payload),
     readLastMessage: (payload: ReadAgentLastMessageInput): Promise<ReadAgentLastMessageResult> =>
@@ -453,6 +459,10 @@ const opencoveApi = {
   },
   system: {
     listFonts: (): Promise<ListSystemFontsResult> => invokeIpc(IPC_CHANNELS.systemListFonts),
+    showNotification: (
+      payload: ShowSystemNotificationInput,
+    ): Promise<ShowSystemNotificationResult> =>
+      invokeIpc(IPC_CHANNELS.systemShowNotification, payload),
   },
   worker: {
     getStatus: (): Promise<WorkerStatusResult> => invokeIpc(IPC_CHANNELS.workerGetStatus),
@@ -476,10 +486,6 @@ const opencoveApi = {
     uninstall: (): Promise<CliPathStatusResult> => invokeIpc(IPC_CHANNELS.cliUninstall),
   },
 }
-
-// Use `contextBridge` APIs to expose Electron APIs to
-// renderer only if context isolation is enabled, otherwise
-// just add to the DOM global.
 if (process.contextIsolated) {
   contextBridge.exposeInMainWorld('opencoveApi', opencoveApi)
 } else {

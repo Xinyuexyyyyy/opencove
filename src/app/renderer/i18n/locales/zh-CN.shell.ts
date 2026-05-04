@@ -1,6 +1,9 @@
 export const zhCNShell = {
   projectContextMenu: {
     manageMounts: '管理位置…',
+    openInExplorer: '在资源管理器中打开',
+    openInFinder: '在 Finder 中打开',
+    openInFileManager: '在文件管理器中打开',
     removeProject: '移除项目',
   },
   projectMountManager: {
@@ -67,6 +70,8 @@ export const zhCNShell = {
     pathPlaceholder: '/path/to/folder',
     pathMustBeAbsolute: '路径必须是绝对路径。',
     invalidUri: '无法解析所选条目的路径。',
+    preparing: '正在准备远程 endpoint…',
+    waitForConnection: '请先让这个 endpoint 完成准备，再开始浏览目录。',
     upAction: '上级',
     goAction: '前往',
     foldersLabel: '目录',

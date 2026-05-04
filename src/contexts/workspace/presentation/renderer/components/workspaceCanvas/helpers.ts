@@ -10,6 +10,7 @@ import {
   OpenCoveAppError,
 } from '@shared/errors/appError'
 import type { Point, Size, TaskPriority, TerminalNodeData, WorkspaceSpaceState } from '../../types'
+import { providerTitlePrefix } from '../../utils/agentTitle'
 import { TASK_PRIORITIES } from './constants'
 import type { TrackpadGestureAction, TrackpadGestureTarget } from './types'
 
@@ -84,6 +85,20 @@ export function centerNodeInViewport(
       zoom: Number.isFinite(options.zoom) && options.zoom > 0 ? options.zoom : 1,
     },
   )
+}
+
+export function centerFlowPositionInViewportPreservingZoom(
+  reactFlow: ReactFlowInstance<Node<TerminalNodeData>>,
+  position: Point,
+  options: { duration?: number } = {},
+): void {
+  const viewport = reactFlow.getViewport()
+  const zoom = Number.isFinite(viewport.zoom) && viewport.zoom > 0 ? viewport.zoom : 1
+
+  reactFlow.setCenter(position.x, position.y, {
+    duration: resolveWorkspaceCanvasAnimationDuration(options.duration ?? 180),
+    zoom,
+  })
 }
 
 function shouldUseVisibleCanvasCenterFromAgentSettings(): boolean {
@@ -397,22 +412,6 @@ function normalizeIntegrationErrorMessage(message: string): string {
 
 export function providerLabel(provider: AgentProvider): string {
   return AGENT_PROVIDER_LABEL[provider]
-}
-
-export function providerTitlePrefix(provider: AgentProvider): string {
-  if (provider === 'claude-code') {
-    return 'claude'
-  }
-
-  if (provider === 'opencode') {
-    return 'opencode'
-  }
-
-  if (provider === 'gemini') {
-    return 'gemini'
-  }
-
-  return 'codex'
 }
 
 export function normalizeDirectoryPath(workspacePath: string, customDirectory: string): string {

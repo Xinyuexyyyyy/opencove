@@ -9,17 +9,22 @@ import { cleanupNodeRuntimeArtifacts } from '../../../utils/nodeRuntimeCleanup'
 import { TERMINAL_LAYOUT_SYNC_EVENT } from '../../terminalNode/constants'
 import { centerNodeInViewport } from '../helpers'
 import { syncWorkspaceCanvasTestState } from '../testHarness'
-import { resolveCanonicalNodeMinSize } from '../../../utils/workspaceNodeSizing'
+import {
+  resolveAgentNodeMinSize,
+  resolveCanonicalNodeMinSize,
+} from '../../../utils/workspaceNodeSizing'
 import { ensureNodesHaveInitialDimensions } from '../../../utils/reactFlowNodeDimensions'
 import { removeNodeWithRelations } from './useNodesStore.closeNode'
 import { resolveWorkspaceLayoutAfterNodeResize } from './useNodesStore.resolveResizeLayout'
 import { useWorkspaceCanvasNodeCreation } from './useNodesStore.createNodes'
 import { guardNodeFromSyncOverwrite } from '../../../utils/syncNodeGuards'
 import { useWorkspaceCanvasWebsiteNodeMutations } from './useNodesStore.websiteMutations'
+import { resolveRenamedWorkspaceNodeTitle, shouldRenameWorkspaceNode } from './useNodesStore.title'
 import type {
   UseWorkspaceCanvasNodesStoreParams,
   UseWorkspaceCanvasNodesStoreResult,
 } from './useNodesStore.types'
+import { persistNodeScrollback } from './useNodesStore.scrollbackPersistence'
 import { resolveTerminalProviderHintFromCommand } from './useNodesStore.terminalProviderHint'
 
 export function useWorkspaceCanvasNodesStore({
@@ -138,7 +143,6 @@ export function useWorkspaceCanvasNodesStore({
     return (agentLaunchTokenByNodeIdRef.current.get(nodeId) ?? 0) === token
   }, [])
   const setNodeScrollback = useScrollbackStore(state => state.setNodeScrollback)
-
   const closeNode = useCallback(
     async (nodeId: string) => {
       clearAgentLaunchToken(nodeId)
@@ -150,7 +154,6 @@ export function useWorkspaceCanvasNodesStore({
           .kill({ sessionId: target.data.sessionId })
           .catch(() => undefined)
       }
-
       if (target?.data.kind === 'image' && target.data.image) {
         const deleteCanvasImage = window.opencoveApi?.workspace?.deleteCanvasImage
         if (typeof deleteCanvasImage === 'function') {
@@ -193,10 +196,12 @@ export function useWorkspaceCanvasNodesStore({
         return
       }
 
-      const minSize = resolveCanonicalNodeMinSize(node.data.kind)
+      const minSize =
+        node.data.kind === 'agent'
+          ? resolveAgentNodeMinSize(node.data.agent?.provider)
+          : resolveCanonicalNodeMinSize(node.data.kind)
       const resolveDimension = (value: number, fallback: number): number =>
         typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : fallback
-
       const normalizedFrame: NodeFrame = {
         position: {
           x: resolveDimension(desiredFrame.position.x, node.position.x),
@@ -231,7 +236,6 @@ export function useWorkspaceCanvasNodesStore({
       if (resolved.spaces !== spacesRef.current) {
         onSpacesChange(resolved.spaces)
       }
-
       onRequestPersistFlush?.()
     },
     [onRequestPersistFlush, onSpacesChange, setNodes, spacesRef],
@@ -251,6 +255,7 @@ export function useWorkspaceCanvasNodesStore({
         }
 
         setNodeScrollback(nodeId, pending)
+        persistNodeScrollback(node, pending)
       }
 
       pendingScrollbacks.clear()
@@ -272,6 +277,7 @@ export function useWorkspaceCanvasNodesStore({
       }
 
       setNodeScrollback(nodeId, scrollback)
+      persistNodeScrollback(node, scrollback)
     },
     [setNodeScrollback],
   )
@@ -335,12 +341,13 @@ export function useWorkspaceCanvasNodesStore({
           let hasChanged = false
 
           const nextNodes = prevNodes.map(node => {
-            if (node.id !== nodeId || node.data.kind !== 'terminal') {
+            if (!shouldRenameWorkspaceNode(node, nodeId)) {
               return node
             }
 
+            const nextTitle = resolveRenamedWorkspaceNodeTitle(node, normalizedTitle)
             const isPinned = node.data.titlePinnedByUser === true
-            if (node.data.title === normalizedTitle && isPinned) {
+            if (node.data.title === nextTitle && isPinned) {
               return node
             }
 
@@ -349,7 +356,7 @@ export function useWorkspaceCanvasNodesStore({
               ...node,
               data: {
                 ...node.data,
-                title: normalizedTitle,
+                title: nextTitle,
                 titlePinnedByUser: true,
               },
             }

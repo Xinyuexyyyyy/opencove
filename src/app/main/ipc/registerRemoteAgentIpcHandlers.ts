@@ -4,6 +4,8 @@ import type {
   AgentProviderId,
   LaunchAgentInput,
   LaunchAgentResult,
+  ListAgentSessionsInput,
+  ListAgentSessionsResult,
   ListAgentModelsInput,
   ListAgentModelsResult,
   ListInstalledAgentProvidersResult,
@@ -147,10 +149,32 @@ async function resolveAgentSessionIdForLookup(options: {
   return { sessionId: best.sessionId, startedAtMs: best.startedAtMs }
 }
 
+async function listRemoteAgentSessions(options: {
+  endpoint: ControlSurfaceRemoteEndpoint
+  provider: AgentProviderId
+  cwd: string
+  limit: number
+}): Promise<ListAgentSessionsResult> {
+  return await invokeOk<ListAgentSessionsResult>(options.endpoint, {
+    kind: 'query',
+    id: 'agent.listSessions',
+    payload: {
+      provider: options.provider,
+      cwd: options.cwd,
+      limit: options.limit,
+    },
+  })
+}
+
 export function registerRemoteAgentIpcHandlers(options: {
   endpointResolver: ControlSurfaceRemoteEndpointResolver
   ptyRuntime: PtyRuntime
+  startupReady?: Promise<void>
 }): IpcRegistrationDisposable {
+  const waitForStartupApproval = async (): Promise<void> => {
+    await options.startupReady
+  }
+
   const noteControlledSession = (sessionId: string): void => {
     if (isRemotePtyRuntime(options.ptyRuntime)) {
       options.ptyRuntime.noteSessionRolePreference(sessionId, 'controller')
@@ -159,7 +183,49 @@ export function registerRemoteAgentIpcHandlers(options: {
 
   registerHandledIpc(
     IPC_CHANNELS.agentListInstalledProviders,
-    async (): Promise<ListInstalledAgentProvidersResult> => ({ providers: [...AGENT_PROVIDERS] }),
+    async (): Promise<ListInstalledAgentProvidersResult> => ({
+      providers: [...AGENT_PROVIDERS],
+      availabilityByProvider: Object.fromEntries(
+        AGENT_PROVIDERS.map(provider => [
+          provider,
+          {
+            provider,
+            command:
+              provider === 'claude-code'
+                ? 'claude'
+                : provider === 'opencode'
+                  ? 'opencode'
+                  : provider === 'gemini'
+                    ? 'gemini'
+                    : 'codex',
+            status: 'available',
+            executablePath: null,
+            source: null,
+            diagnostics: [
+              'Remote agent IPC assumes provider availability is managed by the worker.',
+            ],
+          },
+        ]),
+      ) as ListInstalledAgentProvidersResult['availabilityByProvider'],
+      fetchedAt: new Date().toISOString(),
+    }),
+    { defaultErrorCode: 'common.unexpected' },
+  )
+
+  registerHandledIpc(
+    IPC_CHANNELS.agentListSessions,
+    async (_event, payload: ListAgentSessionsInput): Promise<ListAgentSessionsResult> => {
+      const provider = payload?.provider as AgentProviderId
+      const cwd = normalizeRequiredString(payload?.cwd, 'agent.listSessions cwd')
+      const limit =
+        typeof payload?.limit === 'number' && Number.isFinite(payload.limit) && payload.limit > 0
+          ? Math.floor(payload.limit)
+          : 20
+
+      await waitForStartupApproval()
+      const endpoint = await resolveWorkerEndpoint(options.endpointResolver)
+      return await listRemoteAgentSessions({ endpoint, provider, cwd, limit })
+    },
     { defaultErrorCode: 'common.unexpected' },
   )
 
@@ -200,12 +266,15 @@ export function registerRemoteAgentIpcHandlers(options: {
           ? payload.resumeSessionId.trim()
           : null
 
+      await waitForStartupApproval()
       const endpoint = await resolveWorkerEndpoint(options.endpointResolver)
 
       const launched = await invokeOk<{
         sessionId: string
         provider: AgentProviderId
         startedAt: string
+        profileId: string | null
+        runtimeKind: LaunchAgentResult['runtimeKind']
         resumeSessionId: string | null
         effectiveModel: string | null
         command: string
@@ -230,7 +299,8 @@ export function registerRemoteAgentIpcHandlers(options: {
       return {
         sessionId: launched.sessionId,
         provider: launched.provider,
-        profileId: payload?.profileId ?? null,
+        profileId: launched.profileId ?? null,
+        runtimeKind: launched.runtimeKind,
         command: launched.command,
         args: launched.args,
         launchMode: mode,
@@ -254,6 +324,7 @@ export function registerRemoteAgentIpcHandlers(options: {
         'agent.resolveResumeSession startedAt',
       )
 
+      await waitForStartupApproval()
       const endpoint = await resolveWorkerEndpoint(options.endpointResolver)
       const lookup = await resolveAgentSessionIdForLookup({ endpoint, provider, cwd, startedAt })
       if (!lookup) {
@@ -281,6 +352,7 @@ export function registerRemoteAgentIpcHandlers(options: {
         'agent.readLastMessage startedAt',
       )
 
+      await waitForStartupApproval()
       const endpoint = await resolveWorkerEndpoint(options.endpointResolver)
       const lookup = await resolveAgentSessionIdForLookup({ endpoint, provider, cwd, startedAt })
       if (!lookup) {
@@ -300,6 +372,7 @@ export function registerRemoteAgentIpcHandlers(options: {
 
   return {
     dispose: () => {
+      ipcMain.removeHandler(IPC_CHANNELS.agentListSessions)
       ipcMain.removeHandler(IPC_CHANNELS.agentListModels)
       ipcMain.removeHandler(IPC_CHANNELS.agentListInstalledProviders)
       ipcMain.removeHandler(IPC_CHANNELS.agentLaunch)

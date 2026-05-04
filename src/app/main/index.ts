@@ -3,7 +3,6 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { hydrateCliEnvironmentForAppLaunch } from '../../platform/os/CliEnvironment'
 import { registerIpcHandlers } from './ipc/registerIpcHandlers'
-import { registerControlSurfaceServer } from './controlSurface/registerControlSurfaceServer'
 import {
   configureAppCommandLine,
   configureAppUserDataPath,
@@ -14,12 +13,10 @@ import { setRuntimeIconTestState } from './iconTestHarness'
 import { resolveRuntimeIconPath } from './runtimeIcon'
 import { resolveTitleBarOverlay } from './ipc/registerWindowChromeIpcHandlers'
 import { createApprovedWorkspaceStore } from '../../contexts/workspace/infrastructure/approval/ApprovedWorkspaceStore'
-import { createPtyRuntime } from '../../contexts/terminal/presentation/main-ipc/runtime'
 import { resolveHomeWorkerEndpoint } from './worker/resolveHomeWorkerEndpoint'
 import { createHomeWorkerEndpointResolver } from './worker/homeWorkerEndpointResolver'
 import { hasOwnedLocalWorkerProcess, stopOwnedLocalWorker } from './worker/localWorkerManager'
 import { createMainRuntimeDiagnosticsLogger } from './runtimeDiagnostics'
-import { createStandaloneMountAwarePtyRuntime } from './controlSurface/standaloneMountAwarePtyRuntime'
 import { registerQuickPhrasesContextMenu } from './contextMenu/registerQuickPhrasesContextMenu'
 import { registerQuitCoordinator } from './quitCoordinator'
 import {
@@ -30,11 +27,11 @@ import {
 import { requestRendererPersistFlush } from './rendererPersistFlush'
 
 let ipcDisposable: ReturnType<typeof registerIpcHandlers> | null = null
-let controlSurfaceDisposable: ReturnType<typeof registerControlSurfaceServer> | null = null
 let workerEndpointResolverForContextMenu: ReturnType<
   typeof createHomeWorkerEndpointResolver
 > | null = null
 const OPENCOVE_APP_USER_MODEL_ID = 'dev.deadwave.opencove'
+const OPENCOVE_DEV_APP_USER_MODEL_ID = 'dev.deadwave.opencove.dev'
 const WINDOW_CLOSE_PERSIST_FLUSH_TIMEOUT_MS = 1_500
 let isAppQuitInProgress = false
 
@@ -230,12 +227,16 @@ function createWindow(): void {
   }
 }
 
+function resolveAppUserModelId(): string {
+  return app.isPackaged === false ? OPENCOVE_DEV_APP_USER_MODEL_ID : OPENCOVE_APP_USER_MODEL_ID
+}
+
 // Electron ready: create browser windows & IPC.
 app.whenReady().then(async () => {
   hydrateCliEnvironmentForAppLaunch(app.isPackaged === true)
 
   // Set app user model id for windows
-  electronApp.setAppUserModelId(OPENCOVE_APP_USER_MODEL_ID)
+  electronApp.setAppUserModelId(resolveAppUserModelId())
 
   // Custom macOS menu: zoom roles (resetZoom/zoomIn/zoomOut) are intentionally omitted.
   // Those roles call webContents.setZoomLevel() on the main window, which changes the
@@ -317,7 +318,7 @@ app.whenReady().then(async () => {
 
   const homeWorker = await resolveHomeWorkerEndpoint({
     allowConfig: process.env.NODE_ENV !== 'test',
-    allowStandaloneMode: app.isPackaged === false,
+    allowStandaloneMode: false,
     allowRemoteMode: app.isPackaged === false,
   })
   for (const message of homeWorker.diagnostics) {
@@ -330,36 +331,23 @@ app.whenReady().then(async () => {
           userDataPath: app.getPath('userData'),
           config: homeWorker.config,
           effectiveMode: homeWorker.effectiveMode,
+          initialEndpoint: homeWorker.endpoint,
         })
       : null
   workerEndpointResolverForContextMenu = workerEndpointResolver
 
   if (!workerEndpointResolver) {
-    const localPtyRuntime = createPtyRuntime()
-
-    controlSurfaceDisposable = registerControlSurfaceServer({
-      approvedWorkspaces,
-      ptyRuntime: localPtyRuntime,
-    })
-    const connection = await controlSurfaceDisposable.ready
-
-    ipcDisposable = registerIpcHandlers({
-      approvedWorkspaces,
-      ptyRuntime: createStandaloneMountAwarePtyRuntime({
-        localRuntime: localPtyRuntime,
-        endpointResolver: async () => ({
-          hostname: connection.hostname,
-          port: connection.port,
-          token: connection.token,
-        }),
-      }),
-    })
-  } else {
-    ipcDisposable = registerIpcHandlers({
-      approvedWorkspaces,
-      workerEndpointResolver,
-    })
+    const detail =
+      homeWorker.diagnostics.length > 0
+        ? homeWorker.diagnostics.join(' ')
+        : 'No worker endpoint was available.'
+    throw new Error(`Home Worker is required for Desktop runtime orchestration. ${detail}`)
   }
+
+  ipcDisposable = registerIpcHandlers({
+    approvedWorkspaces,
+    workerEndpointResolver,
+  })
 
   createWindow()
 
@@ -393,7 +381,4 @@ registerQuitCoordinator({
 app.on('will-quit', () => {
   ipcDisposable?.dispose()
   ipcDisposable = null
-
-  void controlSurfaceDisposable?.dispose()
-  controlSurfaceDisposable = null
 })

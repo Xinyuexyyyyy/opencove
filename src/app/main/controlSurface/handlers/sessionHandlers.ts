@@ -3,9 +3,11 @@ import type { PersistenceStore } from '../../../../platform/persistence/sqlite/P
 import type { ApprovedWorkspaceStore } from '../../../../contexts/workspace/infrastructure/approval/ApprovedWorkspaceStore'
 import { createAppError } from '../../../../shared/errors/appError'
 import { buildAgentLaunchCommand } from '../../../../contexts/agent/infrastructure/cli/AgentCommandFactory'
+import { captureGeminiSessionDiscoveryCursor } from '../../../../contexts/agent/infrastructure/cli/AgentSessionLocatorProviders'
 import { ensureOpenCodeEmbeddedTuiConfigPath } from '../../../../contexts/agent/infrastructure/opencode/OpenCodeTuiConfig'
 import {
   normalizeAgentSettings,
+  resolveAgentExecutablePathOverride,
   resolveAgentModel,
 } from '../../../../contexts/settings/domain/agentSettings'
 import { normalizePersistedAppState } from '../../../../platform/persistence/sqlite/normalize'
@@ -26,11 +28,14 @@ import type { PtyStreamHub } from '../ptyStream/ptyStreamHub'
 import { resolveWorkerAgentTestStub } from './sessionAgentTestStub'
 import { registerSessionFinalMessageHandler } from './sessionFinalMessageHandler'
 import { registerSessionLaunchAgentInMountHandler } from './sessionLaunchAgentInMountHandler'
+import { registerSessionPrepareOrReviveHandler } from './sessionPrepareOrReviveHandler'
 import { normalizeLaunchAgentEnv } from './sessionLaunchAgentEnv'
+import { startAgentSessionStateWatcherIfEnabled } from './sessionStateWatcherStart'
 import {
   isRecord,
   normalizeAgentProviderId,
   normalizeOptionalString,
+  normalizeOptionalPositiveInt,
 } from './sessionLaunchPayloadSupport'
 import type { SessionRecord } from './sessionRecords'
 import type { WorkerTopologyStore } from '../topology/topologyStore'
@@ -119,6 +124,12 @@ function normalizeLaunchAgentPayload(payload: unknown): LaunchAgentSessionInput 
     resumeSessionIdRaw === null ? null : normalizeOptionalString(resumeSessionIdRaw)
 
   const env = normalizeLaunchAgentEnv(payload.env)
+  const executablePathOverride =
+    payload.executablePathOverride === undefined || payload.executablePathOverride === null
+      ? null
+      : normalizeOptionalString(payload.executablePathOverride)
+  const cols = normalizeOptionalPositiveInt(payload.cols)
+  const rows = normalizeOptionalPositiveInt(payload.rows)
 
   if (
     agentFullAccess !== undefined &&
@@ -145,7 +156,10 @@ function normalizeLaunchAgentPayload(payload: unknown): LaunchAgentSessionInput 
     model,
     resumeSessionId,
     env,
+    executablePathOverride,
     agentFullAccess: agentFullAccess ?? null,
+    cols,
+    rows,
   }
 }
 
@@ -229,6 +243,9 @@ export function registerSessionHandlers(
 
       const provider = resolveProviderFromSettings(payload.provider ?? null, agentSettings)
       const model = payload.model ?? resolveAgentModel(agentSettings, provider)
+      const executablePathOverride =
+        payload.executablePathOverride ??
+        resolveAgentExecutablePathOverride(agentSettings, provider)
       const agentFullAccess = payload.agentFullAccess ?? agentSettings.agentFullAccess
 
       const testStub = resolveWorkerAgentTestStub({
@@ -288,16 +305,36 @@ export function registerSessionHandlers(
         defaultTerminalProfileId: agentSettings.defaultTerminalProfileId,
         command: launchCommand.command,
         args: launchCommand.args,
+        provider: testStub ? null : provider,
+        executablePathOverride,
         ...(mergedEnv ? { env: mergedEnv } : {}),
       })
+      const geminiDiscoveryCursor =
+        provider === 'gemini' && mode === 'new' && !resumeSessionId
+          ? await captureGeminiSessionDiscoveryCursor(workingDirectory).catch(() => null)
+          : undefined
 
       const { sessionId } = await deps.ptyRuntime.spawnSession({
         cwd: resolvedSpawn.cwd,
-        cols: 80,
-        rows: 24,
+        cols: payload.cols ?? 80,
+        rows: payload.rows ?? 24,
         command: resolvedSpawn.command,
         args: resolvedSpawn.args,
         ...(resolvedSpawn.env ? { env: resolvedSpawn.env } : {}),
+      })
+
+      startAgentSessionStateWatcherIfEnabled({
+        ptyRuntime: deps.ptyRuntime,
+        sessionId,
+        provider,
+        cwd: workingDirectory,
+        launchMode: mode,
+        resumeSessionId,
+        startedAtMs,
+        ...(geminiDiscoveryCursor !== undefined ? { geminiDiscoveryCursor } : {}),
+        opencodeBaseUrl: opencodeServer
+          ? `http://${opencodeServer.hostname}:${String(opencodeServer.port)}`
+          : null,
       })
 
       const executionContext = resolveExecutionContextDto(workingDirectory, {
@@ -318,6 +355,8 @@ export function registerSessionHandlers(
         startedAtMs,
         command: resolvedSpawn.command,
         args: resolvedSpawn.args,
+        launchMode: mode,
+        ...(geminiDiscoveryCursor !== undefined ? { geminiDiscoveryCursor } : {}),
         route: { kind: 'local' },
       }
 
@@ -329,6 +368,8 @@ export function registerSessionHandlers(
         cwd: workingDirectory,
         command: resolvedSpawn.command,
         args: resolvedSpawn.args,
+        cols: payload.cols ?? 80,
+        rows: payload.rows ?? 24,
       })
 
       return {
@@ -336,6 +377,8 @@ export function registerSessionHandlers(
         provider,
         startedAt,
         executionContext,
+        profileId: resolvedSpawn.profileId,
+        runtimeKind: resolvedSpawn.runtimeKind,
         resumeSessionId,
         effectiveModel: launchCommand.effectiveModel,
         command: resolvedSpawn.command,
@@ -346,6 +389,10 @@ export function registerSessionHandlers(
   })
 
   registerSessionLaunchAgentInMountHandler(controlSurface, { ...deps, sessions })
+  registerSessionPrepareOrReviveHandler(controlSurface, {
+    getPersistenceStore: deps.getPersistenceStore,
+    ptyStreamHub: deps.ptyStreamHub,
+  })
 
   controlSurface.register('session.get', {
     kind: 'query',

@@ -1,18 +1,23 @@
 @import '@xyflow/react/dist/style.css';
 
 @import './styles/base.css';
+@import './styles/app-startup-state.css';
 @import './styles/cove-fields.css';
 @import './styles/app-header.css';
 @import './styles/command-center.css';
 @import './styles/control-center.css';
 @import './styles/workspace-search-panel.css';
 @import './styles/workspace-sidebar.css';
+@import './styles/workspace-agent-item.css';
 @import './styles/workspace-canvas.css';
 @import './styles/workspace-overlays.css';
 @import './styles/workspace-overlays.spaces.explorer.preview.css';
 @import './styles/workspace-context-menu.css';
 @import './styles/workspace-pr-chip.css';
 @import './styles/terminal-node.css';
+@import './styles/terminal-node.webgl-layout.css';
+@import './styles/terminal-node.session-actions.css';
+@import './styles/terminal-node.font-rendering.css';
 @import './styles/terminal-node.theme-opencode.css';
 @import './styles/task-node.css';
 @import './styles/note-node.css';
@@ -26,6 +31,8 @@
 @import './styles/settings-panel.lists.css';
 @import './styles/settings-panel.buttons.css';
 @import './styles/cove-window.css';
+@import './styles/remote-ui.css';
+@import './styles/remote-ui.settings.css';
 @import './styles/app-message.css';
 @import './styles/app-notifications.css';
 @import './styles/whats-new.css';

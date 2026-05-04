@@ -1,10 +1,14 @@
 import type { MutableRefObject } from 'react'
 import type { Node } from '@xyflow/react'
-import type { StandardWindowSizeBucket } from '@contexts/settings/domain/agentSettings'
+import {
+  DEFAULT_AGENT_SETTINGS,
+  type StandardWindowSizeBucket,
+} from '@contexts/settings/domain/agentSettings'
+import { resolveTerminalPtyGeometryForNodeFrame } from '@contexts/workspace/domain/terminalPtyGeometry'
 import { toFileUri } from '@contexts/filesystem/domain/fileUri'
 import { resolveSpaceWorkingDirectory } from '@contexts/space/application/resolveSpaceWorkingDirectory'
 import type { Point, TerminalNodeData, WebsiteNodeData, WorkspaceSpaceState } from '../../../types'
-import type { ListMountsResult, SpawnTerminalResult } from '@shared/contracts/dto'
+import type { SpawnTerminalResult } from '@shared/contracts/dto'
 import type { ContextMenuState, CreateNodeInput, NodePlacementOptions } from '../types'
 import {
   resolveDefaultNoteWindowSize,
@@ -17,6 +21,10 @@ import {
   findContainingSpaceByAnchor,
 } from './useInteractions.spaceAssignment'
 import { createNoteNodeAtAnchor } from './useInteractions.noteCreation'
+import {
+  resolveDefaultMountFallback,
+  resolveTerminalLaunchWorkspaceContext,
+} from './useInteractions.paneNodeCreation.terminalLaunch'
 import { translate } from '@app/renderer/i18n'
 
 type SetNodes = (
@@ -29,6 +37,7 @@ export async function createTerminalNodeAtFlowPosition({
   workspaceId,
   defaultTerminalProfileId,
   standardWindowSizeBucket,
+  terminalFontSize = DEFAULT_AGENT_SETTINGS.terminalFontSize,
   workspacePath,
   environmentVariables,
   spacesRef,
@@ -43,6 +52,7 @@ export async function createTerminalNodeAtFlowPosition({
   workspaceId: string
   defaultTerminalProfileId: string | null
   standardWindowSizeBucket: StandardWindowSizeBucket
+  terminalFontSize?: number
   workspacePath: string
   environmentVariables?: Record<string, string>
   spacesRef: MutableRefObject<WorkspaceSpaceState[]>
@@ -61,37 +71,39 @@ export async function createTerminalNodeAtFlowPosition({
     cursorAnchor,
     resolveDefaultTerminalWindowSize(standardWindowSizeBucket),
   )
+  const launchGeometry = resolveTerminalPtyGeometryForNodeFrame({
+    ...resolveDefaultTerminalWindowSize(standardWindowSizeBucket),
+    terminalFontSize,
+  })
 
-  const targetSpace = findContainingSpaceByAnchor(spacesRef.current, cursorAnchor)
-
-  const resolvedCwd = resolveSpaceWorkingDirectory(targetSpace, workspacePath)
-
+  let targetSpace = findContainingSpaceByAnchor(spacesRef.current, cursorAnchor)
+  const launchWorkspaceContext = await resolveTerminalLaunchWorkspaceContext({
+    anchor: cursorAnchor,
+    workspaceId,
+    workspacePath,
+    targetSpace,
+  })
+  targetSpace = launchWorkspaceContext.targetSpace
+  const resolvedWorkspacePath = launchWorkspaceContext.workspacePath
+  let resolvedCwd = resolveSpaceWorkingDirectory(targetSpace, resolvedWorkspacePath)
   let mountId = targetSpace?.targetMountId ?? null
-  let defaultMountRootPath: string | null = null
-  if (!mountId && !targetSpace && workspaceId.trim().length > 0) {
-    const controlSurfaceInvoke = (
-      window as unknown as { opencoveApi?: { controlSurface?: { invoke?: unknown } } }
-    ).opencoveApi?.controlSurface?.invoke
 
-    if (typeof controlSurfaceInvoke === 'function') {
-      try {
-        const mountResult = await window.opencoveApi.controlSurface.invoke<ListMountsResult>({
-          kind: 'query',
-          id: 'mount.list',
-          payload: { projectId: workspaceId },
-        })
-
-        const defaultMount = mountResult.mounts[0] ?? null
-        mountId = defaultMount?.mountId ?? null
-        defaultMountRootPath = defaultMount?.rootPath ?? null
-      } catch (error) {
-        // If we can't resolve mounts, keep the legacy local behavior (workspacePath cwd).
-        // This preserves backwards compatibility for projects created before mounts existed.
-        onShowMessage?.(
-          translate('messages.mountListFailed', { message: toErrorMessage(error) }),
-          'error',
-        )
+  if (!mountId && !targetSpace) {
+    try {
+      const defaultMountFallback = await resolveDefaultMountFallback({
+        workspaceId,
+        workspacePath: resolvedWorkspacePath,
+      })
+      if (defaultMountFallback) {
+        mountId = defaultMountFallback.mountId
+        resolvedCwd = defaultMountFallback.rootPath
       }
+    } catch (error) {
+      onShowMessage?.(
+        translate('messages.mountListFailed', { message: toErrorMessage(error) }),
+        'error',
+      )
+      return null
     }
   }
 
@@ -100,11 +112,7 @@ export async function createTerminalNodeAtFlowPosition({
       ? toFileUri(targetSpace.directoryPath.trim())
       : null
 
-  const nodeWorkingDirectory = mountId
-    ? spawnCwdUri
-      ? resolvedCwd
-      : (defaultMountRootPath ?? resolvedCwd)
-    : resolvedCwd
+  const nodeWorkingDirectory = resolvedCwd
 
   let spawned: SpawnTerminalResult
 
@@ -117,8 +125,8 @@ export async function createTerminalNodeAtFlowPosition({
             mountId,
             cwdUri: spawnCwdUri,
             profileId: defaultTerminalProfileId,
-            cols: 80,
-            rows: 24,
+            cols: launchGeometry.cols,
+            rows: launchGeometry.rows,
             ...(environmentVariables && Object.keys(environmentVariables).length > 0
               ? { env: environmentVariables }
               : {}),
@@ -127,8 +135,8 @@ export async function createTerminalNodeAtFlowPosition({
       : await window.opencoveApi.pty.spawn({
           cwd: resolvedCwd,
           profileId: defaultTerminalProfileId ?? undefined,
-          cols: 80,
-          rows: 24,
+          cols: launchGeometry.cols,
+          rows: launchGeometry.rows,
           ...(environmentVariables && Object.keys(environmentVariables).length > 0
             ? { env: environmentVariables }
             : {}),
@@ -150,6 +158,7 @@ export async function createTerminalNodeAtFlowPosition({
     sessionId: spawned.sessionId,
     profileId: spawned.profileId,
     runtimeKind: spawned.runtimeKind,
+    terminalGeometry: launchGeometry,
     title: resolvedTitle,
     anchor: nodeAnchor,
     kind: 'terminal',
@@ -291,6 +300,7 @@ export async function createTerminalNodeFromPaneContextMenu({
   spacesRef,
   nodesRef,
   standardWindowSizeBucket,
+  terminalFontSize,
   setNodes,
   onSpacesChange,
   createNodeForSession,
@@ -303,6 +313,7 @@ export async function createTerminalNodeFromPaneContextMenu({
   spacesRef: MutableRefObject<WorkspaceSpaceState[]>
   nodesRef: MutableRefObject<Node<TerminalNodeData>[]>
   standardWindowSizeBucket: StandardWindowSizeBucket
+  terminalFontSize?: number
   setNodes: SetNodes
   onSpacesChange: (spaces: WorkspaceSpaceState[]) => void
   createNodeForSession: (input: CreateNodeInput) => Promise<Node<TerminalNodeData> | null>
@@ -321,6 +332,7 @@ export async function createTerminalNodeFromPaneContextMenu({
     workspaceId: '',
     defaultTerminalProfileId,
     standardWindowSizeBucket,
+    terminalFontSize,
     workspacePath,
     environmentVariables,
     spacesRef,

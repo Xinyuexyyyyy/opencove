@@ -26,6 +26,7 @@ interface UseWorkspaceCanvasLifecycleParams {
   cancelSpaceRename: () => void
   selectionDraftRef: React.MutableRefObject<SelectionDraftState | null>
   trackpadGestureLockRef: React.MutableRefObject<TrackpadGestureLockState | null>
+  setIsCanvasWheelGestureCaptureActive: React.Dispatch<React.SetStateAction<boolean>>
   restoredViewportWorkspaceIdRef: React.MutableRefObject<string | null>
   reactFlow: ReactFlowInstance<Node<TerminalNodeData>, Edge>
   viewport: Viewport
@@ -39,6 +40,7 @@ interface UseWorkspaceCanvasLifecycleParams {
   requestNodeDeleteRef: React.MutableRefObject<(nodeIds: string[]) => void>
   focusNodeId?: string | null
   focusSequence?: number
+  nodes: Node<TerminalNodeData>[]
   focusNodeTargetZoom: number
   isFocusNodeTargetZoomPreviewing: boolean
   nodesRef: React.MutableRefObject<Node<TerminalNodeData>[]>
@@ -55,6 +57,7 @@ export function useWorkspaceCanvasLifecycle({
   cancelSpaceRename,
   selectionDraftRef,
   trackpadGestureLockRef,
+  setIsCanvasWheelGestureCaptureActive,
   restoredViewportWorkspaceIdRef,
   reactFlow,
   viewport,
@@ -68,12 +71,14 @@ export function useWorkspaceCanvasLifecycle({
   requestNodeDeleteRef,
   focusNodeId,
   focusSequence,
+  nodes,
   focusNodeTargetZoom,
   isFocusNodeTargetZoomPreviewing,
   nodesRef,
 }: UseWorkspaceCanvasLifecycleParams): void {
   const previewSequenceRef = useRef(0)
   const viewportBeforePreviewRef = useRef<Viewport | null>(null)
+  const focusedNodeRequestKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
     setIsMinimapVisible(persistedMinimapVisible)
@@ -87,9 +92,11 @@ export function useWorkspaceCanvasLifecycle({
     cancelSpaceRename()
     selectionDraftRef.current = null
     trackpadGestureLockRef.current = null
+    setIsCanvasWheelGestureCaptureActive(false)
   }, [
     cancelSpaceRename,
     selectionDraftRef,
+    setIsCanvasWheelGestureCaptureActive,
     setContextMenu,
     setEmptySelectionPrompt,
     setSelectedNodeIds,
@@ -223,11 +230,17 @@ export function useWorkspaceCanvasLifecycle({
       return
     }
 
+    const requestKey = `${focusNodeId}:${focusSequence ?? 0}`
+    if (focusedNodeRequestKeyRef.current === requestKey) {
+      return
+    }
+
     const target = nodesRef.current.find(node => node.id === focusNodeId)
     if (!target) {
       return
     }
 
+    focusedNodeRequestKeyRef.current = requestKey
     focusNodeInViewport(reactFlow, target, { duration: 220, zoom: focusNodeTargetZoom })
-  }, [focusNodeId, focusNodeTargetZoom, focusSequence, nodesRef, reactFlow])
+  }, [focusNodeId, focusNodeTargetZoom, focusSequence, nodes, nodesRef, reactFlow])
 }

@@ -4,17 +4,29 @@ import type {
   CanvasWheelBehavior,
   CanvasWheelZoomModifier,
 } from '@contexts/settings/domain/agentSettings'
-import {
-  isPinchLikeZoomWheelSample,
-  type CanvasInputModalityState,
-  type DetectedCanvasInputMode,
-  type WheelInputSample,
+import type {
+  CanvasInputModalityState,
+  DetectedCanvasInputMode,
 } from '../../../utils/inputModality'
 import type { TerminalNodeData } from '../../../types'
-import { MAX_CANVAS_ZOOM, MIN_CANVAS_ZOOM, TRACKPAD_PAN_SCROLL_SPEED } from '../constants'
+import {
+  MAX_CANVAS_ZOOM,
+  MIN_CANVAS_ZOOM,
+  TRACKPAD_GESTURE_LOCK_GAP_MS,
+  TRACKPAD_PAN_SCROLL_SPEED,
+  VIEWPORT_INTERACTION_SETTLE_MS,
+} from '../constants'
 import { clampNumber, resolveWheelTarget } from '../helpers'
 import type { TrackpadGestureLockState } from '../types'
 import { resolveCanvasWheelGesture } from '../wheelGestures'
+import {
+  isMacLikePlatform,
+  resolveCanvasWheelGestureCaptureActive,
+  resolveEffectiveWheelZoomModifierKey,
+  resolveTrackpadGestureSessionAfterGap,
+  resolveWheelZoomDelta,
+  shouldClearSettledCanvasWheelSessionForPointerIntent,
+} from './useTrackpadGestures.helpers'
 
 interface UseTrackpadGesturesParams {
   canvasInputModeSetting: 'mouse' | 'trackpad' | 'auto'
@@ -25,55 +37,10 @@ interface UseTrackpadGesturesParams {
   setDetectedCanvasInputMode: React.Dispatch<React.SetStateAction<DetectedCanvasInputMode>>
   canvasRef: MutableRefObject<HTMLDivElement | null>
   trackpadGestureLockRef: MutableRefObject<TrackpadGestureLockState | null>
+  setIsCanvasWheelGestureCaptureActive: React.Dispatch<React.SetStateAction<boolean>>
   viewportRef: MutableRefObject<Viewport>
   reactFlow: ReactFlowInstance<Node<TerminalNodeData>>
   onViewportChange: (viewport: { x: number; y: number; zoom: number }) => void
-}
-
-function isMacLikePlatform(): boolean {
-  if (typeof navigator === 'undefined') {
-    return false
-  }
-
-  const navigatorWithUserAgentData = navigator as Navigator & {
-    userAgentData?: { platform?: string }
-  }
-  const platform =
-    (typeof navigatorWithUserAgentData.userAgentData?.platform === 'string' &&
-      navigatorWithUserAgentData.userAgentData.platform) ||
-    navigator.platform ||
-    ''
-
-  return platform.toLowerCase().includes('mac')
-}
-
-function resolveWheelZoomDelta(event: WheelEvent): number {
-  const sample: WheelInputSample = {
-    deltaX: event.deltaX,
-    deltaY: event.deltaY,
-    deltaMode: event.deltaMode,
-    altKey: event.altKey,
-    ctrlKey: event.ctrlKey,
-    metaKey: event.metaKey,
-    shiftKey: event.shiftKey,
-    timeStamp: Number.isFinite(event.timeStamp) && event.timeStamp >= 0 ? event.timeStamp : 0,
-  }
-  const factor = isMacLikePlatform() && isPinchLikeZoomWheelSample(sample) ? 10 : 1
-  return -event.deltaY * (event.deltaMode === 1 ? 0.05 : event.deltaMode ? 1 : 0.002) * factor
-}
-
-function resolveEffectiveWheelZoomModifierKey(
-  setting: CanvasWheelZoomModifier,
-  platform: string | undefined,
-): 'ctrl' | 'meta' | 'alt' {
-  switch (setting) {
-    case 'primary':
-      return platform === 'darwin' ? 'meta' : 'ctrl'
-    case 'ctrl':
-      return 'ctrl'
-    case 'alt':
-      return 'alt'
-  }
 }
 
 export function useWorkspaceCanvasTrackpadGestures({
@@ -85,6 +52,7 @@ export function useWorkspaceCanvasTrackpadGestures({
   setDetectedCanvasInputMode,
   canvasRef,
   trackpadGestureLockRef,
+  setIsCanvasWheelGestureCaptureActive,
   viewportRef,
   reactFlow,
   onViewportChange,
@@ -92,6 +60,7 @@ export function useWorkspaceCanvasTrackpadGestures({
   const reactFlowStore = useStoreApi()
   const interactionClearTimerRef = useRef<number | null>(null)
   const viewportCommitTimerRef = useRef<number | null>(null)
+  const gestureSessionClearTimerRef = useRef<number | null>(null)
   const safariPinchSessionRef = useRef<{
     startScale: number
     anchorFlow: { x: number; y: number }
@@ -106,14 +75,44 @@ export function useWorkspaceCanvasTrackpadGestures({
     if (interactionClearTimerRef.current !== null) {
       window.clearTimeout(interactionClearTimerRef.current)
     }
-
     interactionClearTimerRef.current = window.setTimeout(() => {
       interactionClearTimerRef.current = null
       reactFlowStore.setState({
         coveViewportInteractionActive: false,
       } as unknown as Parameters<typeof reactFlowStore.setState>[0])
-    }, 120)
+    }, VIEWPORT_INTERACTION_SETTLE_MS)
   }, [reactFlowStore])
+
+  const clearTrackpadGestureSession = useCallback(() => {
+    if (gestureSessionClearTimerRef.current !== null) {
+      window.clearTimeout(gestureSessionClearTimerRef.current)
+      gestureSessionClearTimerRef.current = null
+    }
+    trackpadGestureLockRef.current = null
+    setIsCanvasWheelGestureCaptureActive(false)
+  }, [setIsCanvasWheelGestureCaptureActive, trackpadGestureLockRef])
+
+  const commitTrackpadGestureSession = useCallback(
+    (nextSession: TrackpadGestureLockState | null) => {
+      if (gestureSessionClearTimerRef.current !== null) {
+        window.clearTimeout(gestureSessionClearTimerRef.current)
+        gestureSessionClearTimerRef.current = null
+      }
+      trackpadGestureLockRef.current = nextSession
+      setIsCanvasWheelGestureCaptureActive(resolveCanvasWheelGestureCaptureActive(nextSession))
+      if (nextSession === null) {
+        return
+      }
+      gestureSessionClearTimerRef.current = window.setTimeout(() => {
+        gestureSessionClearTimerRef.current = null
+        trackpadGestureLockRef.current = resolveTrackpadGestureSessionAfterGap(
+          trackpadGestureLockRef.current,
+        )
+        setIsCanvasWheelGestureCaptureActive(false)
+      }, TRACKPAD_GESTURE_LOCK_GAP_MS)
+    },
+    [setIsCanvasWheelGestureCaptureActive, trackpadGestureLockRef],
+  )
 
   const handleCanvasWheelCapture = useCallback(
     (event: WheelEvent) => {
@@ -164,7 +163,7 @@ export function useWorkspaceCanvasTrackpadGestures({
           ? previous
           : decision.nextDetectedCanvasInputMode,
       )
-      trackpadGestureLockRef.current = decision.nextTrackpadGestureLock
+      commitTrackpadGestureSession(decision.nextTrackpadGestureLock)
 
       if (decision.canvasAction === null) {
         return
@@ -202,7 +201,7 @@ export function useWorkspaceCanvasTrackpadGestures({
         viewportCommitTimerRef.current = window.setTimeout(() => {
           viewportCommitTimerRef.current = null
           onViewportChange(viewportRef.current)
-        }, 120)
+        }, VIEWPORT_INTERACTION_SETTLE_MS)
         return
       }
 
@@ -244,7 +243,7 @@ export function useWorkspaceCanvasTrackpadGestures({
       viewportCommitTimerRef.current = window.setTimeout(() => {
         viewportCommitTimerRef.current = null
         onViewportChange(viewportRef.current)
-      }, 120)
+      }, VIEWPORT_INTERACTION_SETTLE_MS)
     },
     [
       canvasInputModeSetting,
@@ -256,6 +255,7 @@ export function useWorkspaceCanvasTrackpadGestures({
       onViewportChange,
       reactFlow,
       resolvedCanvasInputMode,
+      commitTrackpadGestureSession,
       setDetectedCanvasInputMode,
       trackpadGestureLockRef,
       viewportRef,
@@ -273,8 +273,37 @@ export function useWorkspaceCanvasTrackpadGestures({
         window.clearTimeout(viewportCommitTimerRef.current)
         viewportCommitTimerRef.current = null
       }
+
+      if (gestureSessionClearTimerRef.current !== null) {
+        window.clearTimeout(gestureSessionClearTimerRef.current)
+        gestureSessionClearTimerRef.current = null
+      }
+      setIsCanvasWheelGestureCaptureActive(false)
     }
-  }, [])
+  }, [setIsCanvasWheelGestureCaptureActive])
+
+  useEffect(() => {
+    const canvasElement = canvasRef.current
+    if (!canvasElement) {
+      return
+    }
+
+    const handlePointerIntent = (): void => {
+      if (!shouldClearSettledCanvasWheelSessionForPointerIntent(trackpadGestureLockRef.current)) {
+        return
+      }
+
+      clearTrackpadGestureSession()
+    }
+
+    canvasElement.addEventListener('pointermove', handlePointerIntent, true)
+    canvasElement.addEventListener('pointerdown', handlePointerIntent, true)
+
+    return () => {
+      canvasElement.removeEventListener('pointermove', handlePointerIntent, true)
+      canvasElement.removeEventListener('pointerdown', handlePointerIntent, true)
+    }
+  }, [canvasRef, clearTrackpadGestureSession, trackpadGestureLockRef])
 
   useEffect(() => {
     const useManualCanvasWheelGestures =
@@ -330,7 +359,7 @@ export function useWorkspaceCanvasTrackpadGestures({
       viewportCommitTimerRef.current = window.setTimeout(() => {
         viewportCommitTimerRef.current = null
         onViewportChange(viewportRef.current)
-      }, 120)
+      }, VIEWPORT_INTERACTION_SETTLE_MS)
     }
 
     const handleGestureStart = (rawEvent: Event): void => {
@@ -349,11 +378,12 @@ export function useWorkspaceCanvasTrackpadGestures({
         burstMode: 'trackpad',
       }
       setDetectedCanvasInputMode(previous => (previous === 'trackpad' ? previous : 'trackpad'))
-      trackpadGestureLockRef.current = {
+      commitTrackpadGestureSession({
         action: 'pinch',
-        target: 'canvas',
+        owner: 'canvas',
+        phase: 'active',
         lastTimestamp: lockTimestamp,
-      }
+      })
 
       markViewportInteractionActive()
 
@@ -399,6 +429,17 @@ export function useWorkspaceCanvasTrackpadGestures({
         return
       }
 
+      const lockTimestamp =
+        Number.isFinite(event.timeStamp) && event.timeStamp > 0
+          ? event.timeStamp
+          : performance.now()
+      commitTrackpadGestureSession({
+        action: 'pinch',
+        owner: 'canvas',
+        phase: 'active',
+        lastTimestamp: lockTimestamp,
+      })
+
       markViewportInteractionActive()
 
       const canvasRect = canvasElement.getBoundingClientRect()
@@ -421,6 +462,7 @@ export function useWorkspaceCanvasTrackpadGestures({
     const handleGestureEnd = (rawEvent: Event): void => {
       const event = rawEvent as SafariGestureEvent
       safariPinchSessionRef.current = null
+      clearTrackpadGestureSession()
       commitViewportSoon()
 
       event.preventDefault()
@@ -435,6 +477,7 @@ export function useWorkspaceCanvasTrackpadGestures({
 
     return () => {
       safariPinchSessionRef.current = null
+      clearTrackpadGestureSession()
       canvasElement.removeEventListener('gesturestart', handleGestureStart, true)
       canvasElement.removeEventListener('gesturechange', handleGestureChange, true)
       canvasElement.removeEventListener('gestureend', handleGestureEnd, true)
@@ -447,8 +490,9 @@ export function useWorkspaceCanvasTrackpadGestures({
     markViewportInteractionActive,
     onViewportChange,
     reactFlow,
+    clearTrackpadGestureSession,
+    commitTrackpadGestureSession,
     setDetectedCanvasInputMode,
-    trackpadGestureLockRef,
     viewportRef,
   ])
 

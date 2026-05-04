@@ -5,11 +5,12 @@ import type {
   WebsiteNodeData,
 } from '../../src/contexts/workspace/presentation/renderer/types'
 import type { CreateMountResult, ListMountsResult } from '../../src/shared/contracts/dto'
-import { createTestUserDataDir, launchApp } from './workspace-canvas.app'
+import { launchApp } from './workspace-canvas.app'
 import {
   buildEchoSequenceCommand,
   buildNodeEvalCommand,
   buildPaddedNumberSequenceCommand,
+  createTestUserDataDir,
   removePathWithRetry,
 } from './workspace-canvas.testUtils'
 
@@ -261,11 +262,15 @@ export async function seedWorkspaceState(
       | { ok: false; reason: string; error: { code: string; debugMessage?: string } }
     let writeResult: WriteWorkspaceStateResult
     try {
-      writeResult = await window.evaluate(async state => {
-        return await window.opencoveApi.persistence.writeWorkspaceStateRaw({
-          raw: JSON.stringify(state),
-        })
-      }, seededState)
+      writeResult = await window.evaluate(
+        async ({ state, viewStateKey }) => {
+          window.localStorage.removeItem(viewStateKey)
+          return await window.opencoveApi.persistence.writeWorkspaceStateRaw({
+            raw: JSON.stringify(state),
+          })
+        },
+        { state: seededState, viewStateKey: viewStateStorageKey },
+      )
     } catch (error) {
       if (isRetryableNavigationError(error)) {
         await window
@@ -381,6 +386,9 @@ export async function seedWorkspaceState(
       throw error
     }
     if (seededReady && workspaceCount >= payload.workspaces.length) {
+      await expect(window.locator('.app-startup-state')).toHaveCount(0)
+      await expect(window.locator('.workspace-canvas .react-flow__pane').first()).toBeVisible()
+      await window.waitForTimeout(80)
       await ensureWorkspaceMounts(window, payload.workspaces)
       return true
     }

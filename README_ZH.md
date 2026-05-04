@@ -76,6 +76,52 @@ OpenCove 围绕一个核心判断来设计：**多 Agent 工作流更适合用�
 > xattr -dr com.apple.quarantine /Applications/OpenCove.app
 > ```
 
+### CLI / Server 安装
+
+现在 `opencove` CLI 有两条正式安装路径：
+
+- 通过 Desktop 安装：打开 **Settings → Worker → CLI**，点击 **Install CLI**。
+- 不安装 Desktop：使用包含 standalone runtime bundle（`opencove-server-*`）以及
+  release 专属 installer 资产的 GitHub Release，例如
+  `opencove-install-v<tag>.sh` / `opencove-install-v<tag>.ps1`。stable release 还会额外
+  发布通用别名 `opencove-install.sh` / `opencove-install.ps1`，它们始终指向最新的
+  stable release。
+
+如果 `releases/latest/download/opencove-install.sh` 返回 `404`，说明当前 latest stable
+还没有发布 standalone installer。此时请先使用 Desktop 安装，或等待包含这些资产的
+release。
+
+安装 latest stable 时，macOS / Linux 可使用：
+
+```bash
+curl -fsSL https://github.com/DeadWaveWave/opencove/releases/latest/download/opencove-install.sh | sh
+```
+
+Windows 使用 PowerShell：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-RestMethod https://github.com/DeadWaveWave/opencove/releases/latest/download/opencove-install.ps1 | Invoke-Expression"
+```
+
+如果你要安装某个 nightly 或任意指定 tag 的 release，请使用该 release 页面中的
+带版本 installer：
+
+```bash
+curl -fsSL https://github.com/DeadWaveWave/opencove/releases/download/v<version>/opencove-install-v<version>.sh | sh
+```
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-RestMethod https://github.com/DeadWaveWave/opencove/releases/download/v<version>/opencove-install-v<version>.ps1 | Invoke-Expression"
+```
+
+如果你想在服务器上直接托管 Web UI，安装后可直接启动 worker：
+
+```bash
+opencove worker start --hostname 0.0.0.0 --web-ui-password 'change-me'
+```
+
+启动后 CLI 会打印 Web UI 地址，并启用基于密码的浏览器登录。只要 Web UI 暴露到 localhost 之外，就应始终设置密码。
+
 ### 源码编译
 
 #### 环境依赖
@@ -98,7 +144,7 @@ pnpm install
 pnpm dev
 ```
 
-> 更多底层构建与打包发布说明，请查阅 [RELEASING.md](docs/RELEASING.md)。
+> 更多底层构建与打包发布说明，请查阅 [RELEASING.md](docs/runtime/RELEASING.md)。
 
 ### Web UI（实验性）
 
@@ -109,8 +155,8 @@ OpenCove 提供一个**实验性的 Worker Web UI**，允许你用浏览器打�
 - 开发提示：LAN 访问会使用 `out/renderer` 的 build 产物（无 HMR）。修改 UI 后需要先跑 `pnpm build` 再刷新。
 
 更多说明：
-- `docs/CONTROL_SURFACE.md`
-- `docs/WEB_UI_TROUBLESHOOTING.md`
+- `docs/architecture/CONTROL_SURFACE.md`
+- `docs/runtime/WEB_UI_TROUBLESHOOTING.md`
 
 ## 🏗️ 技术架构
 

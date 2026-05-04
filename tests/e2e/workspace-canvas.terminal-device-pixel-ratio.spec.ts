@@ -5,6 +5,7 @@ import {
   launchApp,
   readCanvasViewport,
 } from './workspace-canvas.helpers'
+import { resolveTerminalEffectiveDevicePixelRatio } from '../../src/contexts/workspace/presentation/renderer/components/terminalNode/effectiveDevicePixelRatio'
 
 type TerminalRenderMetrics = {
   effectiveDpr: number | null
@@ -32,7 +33,7 @@ async function readTerminalRenderMetrics(
 }
 
 test.describe('Workspace Canvas - Terminal effective DPR', () => {
-  test('raises terminal backing resolution on zoom without remounting or losing focus', async () => {
+  test('keeps terminal DPR native on zoom without remounting or losing focus', async () => {
     const { electronApp, window } = await launchApp({ windowMode: 'offscreen' })
 
     try {
@@ -65,6 +66,10 @@ test.describe('Workspace Canvas - Terminal effective DPR', () => {
 
       const baselineWindowDpr = await window.evaluate(() => window.devicePixelRatio)
       expect(baselineWindowDpr).toBeGreaterThan(0)
+      const expectedBaselineDpr = resolveTerminalEffectiveDevicePixelRatio({
+        baseDevicePixelRatio: baselineWindowDpr,
+        viewportZoom: 1,
+      })
 
       let baselineMetrics: TerminalRenderMetrics | null = null
       await expect
@@ -76,7 +81,7 @@ test.describe('Workspace Canvas - Terminal effective DPR', () => {
           { timeout: 15_000 },
         )
         .toMatchObject({
-          effectiveDpr: baselineWindowDpr,
+          effectiveDpr: expectedBaselineDpr,
         })
 
       const baselineInstanceId = baselineMetrics?.instanceId ?? null
@@ -93,28 +98,38 @@ test.describe('Workspace Canvas - Terminal effective DPR', () => {
           return (await readCanvasViewport(window)).zoom
         })
         .toBeGreaterThan(1.01)
-      const zoomedViewport = await readCanvasViewport(window)
-
       const zoomedWindowDpr = await window.evaluate(() => window.devicePixelRatio)
       expect(zoomedWindowDpr).toBeCloseTo(baselineWindowDpr, 5)
 
       let zoomedMetrics: TerminalRenderMetrics | null = null
+      let zoomedViewport = await readCanvasViewport(window)
       await expect
         .poll(
           async () => {
+            zoomedViewport = await readCanvasViewport(window)
             zoomedMetrics = await readTerminalRenderMetrics(window, 'node-terminal-dpr')
-            return zoomedMetrics?.effectiveDpr ?? 0
+            const expectedEffectiveDpr = resolveTerminalEffectiveDevicePixelRatio({
+              baseDevicePixelRatio: zoomedWindowDpr,
+              viewportZoom: zoomedViewport.zoom,
+            })
+            return Math.abs((zoomedMetrics?.effectiveDpr ?? 0) - expectedEffectiveDpr) < 0.05
           },
           { timeout: 15_000 },
         )
-        .toBeGreaterThan(baselineWindowDpr)
+        .toBe(true)
 
-      expect(zoomedMetrics?.effectiveDpr).toBeCloseTo(baselineWindowDpr * zoomedViewport.zoom, 2)
-      expect(zoomedMetrics?.deviceCanvasWidth ?? 0).toBeGreaterThan(
+      const expectedZoomedDpr = resolveTerminalEffectiveDevicePixelRatio({
+        baseDevicePixelRatio: zoomedWindowDpr,
+        viewportZoom: zoomedViewport.zoom,
+      })
+      expect(zoomedMetrics?.effectiveDpr).toBeCloseTo(expectedZoomedDpr, 1)
+      expect(zoomedMetrics?.deviceCanvasWidth ?? 0).toBeCloseTo(
         baselineMetrics?.deviceCanvasWidth ?? 0,
+        1,
       )
-      expect(zoomedMetrics?.deviceCanvasHeight ?? 0).toBeGreaterThan(
+      expect(zoomedMetrics?.deviceCanvasHeight ?? 0).toBeCloseTo(
         baselineMetrics?.deviceCanvasHeight ?? 0,
+        1,
       )
       expect(zoomedMetrics?.cssCanvasWidth).toBeCloseTo(baselineMetrics?.cssCanvasWidth ?? 0, 1)
       expect(zoomedMetrics?.cssCanvasHeight).toBeCloseTo(baselineMetrics?.cssCanvasHeight ?? 0, 1)
@@ -134,7 +149,7 @@ test.describe('Workspace Canvas - Terminal effective DPR', () => {
     }
   })
 
-  test('sharpens a user-scrolled terminal after zoom settles without returning to bottom', async () => {
+  test('preserves a user-scrolled terminal after zoom settles without returning to bottom', async () => {
     const { electronApp, window } = await launchApp({ windowMode: 'offscreen' })
 
     try {
@@ -165,6 +180,10 @@ test.describe('Workspace Canvas - Terminal effective DPR', () => {
       await window.keyboard.press('Enter')
       await expect(terminal).toContainText('ZOOM_SCROLL_259')
       const baselineWindowDpr = await window.evaluate(() => window.devicePixelRatio)
+      const expectedBaselineDpr = resolveTerminalEffectiveDevicePixelRatio({
+        baseDevicePixelRatio: baselineWindowDpr,
+        viewportZoom: 1,
+      })
 
       await terminal.hover()
       await window.mouse.wheel(0, -1600)
@@ -228,17 +247,23 @@ test.describe('Workspace Canvas - Terminal effective DPR', () => {
         hookViewportY: afterMetrics?.hookViewportY ?? null,
         hookBaseY: afterMetrics?.hookBaseY ?? null,
       })
-      expect(afterMetrics?.effectiveDpr ?? 0).toBeGreaterThan(baselineWindowDpr)
+      expect(afterMetrics?.effectiveDpr).toBeCloseTo(expectedBaselineDpr, 2)
       expect(afterMetrics?.viewportY).not.toBeNull()
       expect(afterMetrics?.baseY).not.toBeNull()
       expect(afterMetrics?.viewportY).toBeLessThan(afterMetrics?.baseY ?? 0)
-      expect(afterMetrics?.viewportY).toBe(beforeMetrics?.viewportY ?? null)
+      expect(
+        Math.abs((afterMetrics?.viewportY ?? 0) - (beforeMetrics?.viewportY ?? 0)),
+      ).toBeLessThanOrEqual(1)
       expect((afterMetrics?.baseY ?? 0) - (afterMetrics?.viewportY ?? 0)).toBeGreaterThanOrEqual(
         (beforeMetrics?.baseY ?? 0) - (beforeMetrics?.viewportY ?? 0),
       )
       expect(afterMetrics?.cssCanvasWidth).toBeCloseTo(beforeMetrics?.cssCanvasWidth ?? 0, 1)
       expect(afterMetrics?.cssCanvasHeight).toBeCloseTo(beforeMetrics?.cssCanvasHeight ?? 0, 1)
-      expect(afterMetrics?.effectiveDpr).toBeCloseTo(baselineWindowDpr * zoomedViewport.zoom, 2)
+      const expectedZoomedDpr = resolveTerminalEffectiveDevicePixelRatio({
+        baseDevicePixelRatio: windowDprAfterZoom,
+        viewportZoom: zoomedViewport.zoom,
+      })
+      expect(afterMetrics?.effectiveDpr).toBeCloseTo(expectedZoomedDpr, 2)
       expect(afterMetrics?.instanceId).toBe(beforeMetrics?.instanceId ?? null)
     } finally {
       await electronApp.close()

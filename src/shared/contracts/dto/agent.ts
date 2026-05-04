@@ -1,6 +1,19 @@
 export type AgentProviderId = 'claude-code' | 'codex' | 'opencode' | 'gemini'
 
 export type AgentModelCatalogSource = 'claude-static' | 'codex-cli' | 'opencode-cli' | 'gemini-cli'
+export type ExecutableResolutionSource =
+  | 'override'
+  | 'shell_env_path'
+  | 'process_path'
+  | 'fallback_directory'
+export type AgentSessionSummarySource =
+  | 'claude-index'
+  | 'claude-jsonl'
+  | 'codex-file'
+  | 'gemini-file'
+  | 'opencode-cli'
+  | 'opencode-db'
+  | 'control-surface'
 import type { AppErrorDescriptor } from './error'
 import type { TerminalRuntimeKind } from './terminal'
 
@@ -8,10 +21,39 @@ export type AgentLaunchMode = 'new' | 'resume'
 
 export interface ListAgentModelsInput {
   provider: AgentProviderId
+  executablePathOverride?: string | null
+}
+
+export interface ListInstalledAgentProvidersInput {
+  executablePathOverrideByProvider?: Partial<Record<AgentProviderId, string>> | null
+}
+
+export type AgentProviderAvailabilityStatus = 'available' | 'unavailable' | 'misconfigured'
+
+export interface AgentProviderAvailability {
+  provider: AgentProviderId
+  command: string
+  status: AgentProviderAvailabilityStatus
+  executablePath: string | null
+  source: ExecutableResolutionSource | null
+  diagnostics: string[]
 }
 
 export interface ListInstalledAgentProvidersResult {
   providers: AgentProviderId[]
+  availabilityByProvider: Record<AgentProviderId, AgentProviderAvailability>
+  fetchedAt: string
+}
+
+export interface AgentSessionSummary {
+  sessionId: string
+  provider: AgentProviderId
+  cwd: string
+  title: string | null
+  preview?: string | null
+  startedAt: string | null
+  updatedAt: string | null
+  source: AgentSessionSummarySource
 }
 
 export interface AgentModelOption {
@@ -29,6 +71,18 @@ export interface ListAgentModelsResult {
   error: AppErrorDescriptor | null
 }
 
+export interface ListAgentSessionsInput {
+  provider: AgentProviderId
+  cwd: string
+  limit?: number | null
+}
+
+export interface ListAgentSessionsResult {
+  provider: AgentProviderId
+  cwd: string
+  sessions: AgentSessionSummary[]
+}
+
 export interface LaunchAgentInput {
   provider: AgentProviderId
   cwd: string
@@ -38,6 +92,7 @@ export interface LaunchAgentInput {
   model?: string | null
   resumeSessionId?: string | null
   env?: Record<string, string> | null
+  executablePathOverride?: string | null
   agentFullAccess?: boolean
   cols?: number
   rows?: number

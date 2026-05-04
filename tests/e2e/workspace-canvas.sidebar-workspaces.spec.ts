@@ -39,9 +39,24 @@ test.describe('Workspace Canvas - Sidebar Workspaces', () => {
           scrollTop: element.scrollTop,
         }
       })
+      const pageMetrics = await window.evaluate(() => {
+        const doc = document.documentElement
+        const body = document.body
+
+        return {
+          documentScrollHeight: doc.scrollHeight,
+          documentClientHeight: doc.clientHeight,
+          bodyScrollHeight: body.scrollHeight,
+          bodyClientHeight: body.clientHeight,
+        }
+      })
 
       expect(sidebarMetrics.scrollHeight).toBeGreaterThan(sidebarMetrics.clientHeight)
       expect(sidebarMetrics.scrollTop).toBeGreaterThan(0)
+      expect(pageMetrics.documentScrollHeight).toBeLessThanOrEqual(
+        pageMetrics.documentClientHeight + 1,
+      )
+      expect(pageMetrics.bodyScrollHeight).toBeLessThanOrEqual(pageMetrics.bodyClientHeight + 1)
       await expect(lastWorkspaceName).toBeVisible()
       await expect(sidebar).toBeVisible()
       await expect(settingsButton).toBeVisible()
@@ -243,6 +258,50 @@ test.describe('Workspace Canvas - Sidebar Workspaces', () => {
           activeWorkspaceId: 'workspace-remove-a',
           workspaceIds: ['workspace-remove-a'],
         })
+    } finally {
+      await electronApp.close()
+    }
+  })
+
+  test('shows the open-in-file-manager action in the project context menu', async () => {
+    const { electronApp, window } = await launchApp()
+
+    try {
+      await seedWorkspaceState(window, {
+        activeWorkspaceId: 'workspace-open-b',
+        workspaces: [
+          {
+            id: 'workspace-open-a',
+            name: 'workspace-open-a',
+            path: testWorkspacePath,
+            nodes: [],
+          },
+          {
+            id: 'workspace-open-b',
+            name: 'workspace-open-b',
+            path: `${testWorkspacePath}-b`,
+            nodes: [],
+          },
+        ],
+      })
+
+      const targetWorkspace = window
+        .locator('.workspace-item')
+        .filter({ has: window.locator('.workspace-item__name', { hasText: 'workspace-open-b' }) })
+        .first()
+      await expect(targetWorkspace).toBeVisible()
+
+      await targetWorkspace.click({ button: 'right' })
+
+      await expect(
+        window.locator('[data-testid="workspace-project-manage-mounts-workspace-open-b"]'),
+      ).toBeVisible()
+      await expect(
+        window.locator('[data-testid="workspace-project-open-in-file-manager-workspace-open-b"]'),
+      ).toBeVisible()
+      await expect(
+        window.locator('[data-testid="workspace-project-remove-workspace-open-b"]'),
+      ).toBeVisible()
     } finally {
       await electronApp.close()
     }

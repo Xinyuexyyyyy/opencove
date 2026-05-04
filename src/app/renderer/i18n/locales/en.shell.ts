@@ -1,6 +1,9 @@
 export const enShell = {
   projectContextMenu: {
     manageMounts: 'Manage locations…',
+    openInExplorer: 'Open in Explorer',
+    openInFinder: 'Open in Finder',
+    openInFileManager: 'Open in File Manager',
     removeProject: 'Remove project',
   },
   projectMountManager: {
@@ -69,6 +72,8 @@ export const enShell = {
     pathPlaceholder: '/path/to/folder',
     pathMustBeAbsolute: 'Path must be absolute.',
     invalidUri: 'Unable to resolve the selected entry path.',
+    preparing: 'Preparing the remote endpoint…',
+    waitForConnection: 'Finish preparing this endpoint before browsing folders.',
     upAction: 'Up',
     goAction: 'Go',
     foldersLabel: 'Folders',

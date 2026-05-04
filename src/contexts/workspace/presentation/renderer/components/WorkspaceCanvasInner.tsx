@@ -26,6 +26,7 @@ export function WorkspaceCanvasInner({
   agentSettings,
   isFocusNodeTargetZoomPreviewing = false,
   focusNodeId,
+  focusSpaceId,
   focusSequence,
 }: WorkspaceCanvasProps) {
   const reactFlow = useReactFlow<Node<TerminalNodeData>, Edge>()
@@ -191,24 +192,13 @@ export function WorkspaceCanvasInner({
     setDetectedCanvasInputMode: canvasState.setDetectedCanvasInputMode,
     canvasRef: canvasState.canvasRef,
     trackpadGestureLockRef: canvasState.trackpadGestureLockRef,
+    setIsCanvasWheelGestureCaptureActive: canvasState.setIsCanvasWheelGestureCaptureActive,
     viewportRef: canvasState.viewportRef,
     reactFlow,
     onViewportChange,
   })
-  workspaceCanvasHooks.useWorkspaceCanvasLifecycleBindings({
-    workspaceId,
-    persistedMinimapVisible,
-    canvasState,
-    cancelSpaceRename: spacesApi.cancelSpaceRename,
-    reactFlow,
-    viewport,
-    agentSettings,
-    focusNodeId,
-    focusSequence,
-    isFocusNodeTargetZoomPreviewing,
-    nodesRef: nodeStore.nodesRef,
-    requestNodeDeleteRef: actionRefs.requestNodeDeleteRef,
-  })
+  // prettier-ignore
+  workspaceCanvasHooks.useWorkspaceCanvasLifecycleBindings({ workspaceId, persistedMinimapVisible, canvasState, cancelSpaceRename: spacesApi.cancelSpaceRename, reactFlow, viewport, agentSettings, focusSpaceId, focusNodeId, focusSequence, spaces, focusSpaceInViewport: spacesApi.focusSpaceInViewport, nodes: canvasState.flowNodes, isFocusNodeTargetZoomPreviewing, nodesRef: nodeStore.nodesRef, requestNodeDeleteRef: actionRefs.requestNodeDeleteRef })
   const nodeTypes = workspaceCanvasHooks.useWorkspaceCanvasComposedNodeTypes({
     setNodes: nodeStore.setNodes,
     setSelectedNodeIds: canvasState.setSelectedNodeIds,
@@ -264,6 +254,7 @@ export function WorkspaceCanvasInner({
     workspacePath,
     environmentVariables,
     defaultTerminalProfileId: agentSettings.defaultTerminalProfileId,
+    terminalFontSize: agentSettings.terminalFontSize,
     spacesRef: canvasState.spacesRef,
     onSpacesChange,
     nodesRef: nodeStore.nodesRef,
@@ -288,13 +279,20 @@ export function WorkspaceCanvasInner({
     cancelSpaceRename: spacesApi.cancelSpaceRename,
     reactFlow,
     spacesRef: canvasState.spacesRef,
+    spaceNavigationAnchorIdRef: canvasState.spaceNavigationAnchorIdRef,
     nodesRef: nodeStore.nodesRef,
     setNodes: nodeStore.setNodes,
+    setSelectedNodeIds: canvasState.setSelectedNodeIds,
+    setSelectedSpaceIds: canvasState.setSelectedSpaceIds,
+    selectedNodeIdsRef: canvasState.selectedNodeIdsRef,
+    selectedSpaceIdsRef: canvasState.selectedSpaceIdsRef,
     onSpacesChange,
     createNodeForSession: nodeStore.createNodeForSession,
     createNoteNode: nodeStore.createNoteNode,
     createSpaceFromSelectedNodes: spacesApi.createSpaceFromSelectedNodes,
     activateSpace: spacesApi.activateSpace,
+    setActiveSpaceIdFromNodeNavigation: spacesApi.setActiveSpaceIdFromNodeNavigation,
+    clearNodeSelection,
     onShowMessage,
   })
   const {
@@ -333,6 +331,9 @@ export function WorkspaceCanvasInner({
     updateNodeScrollback: nodeStore.updateNodeScrollback,
     updateTerminalTitle: nodeStore.updateTerminalTitle,
     renameTerminalTitle: nodeStore.renameTerminalTitle,
+    reloadAgentSession: agentSupport.reloadAgentNode,
+    listAgentSessions: agentSupport.listAgentSessionsForNode,
+    switchAgentSession: agentSupport.switchAgentNodeSession,
     focusNodeOnClick: agentSettings.focusNodeOnClick,
     focusNodeTargetZoom: agentSettings.focusNodeTargetZoom,
     nodesRef: nodeStore.nodesRef,
@@ -392,6 +393,7 @@ export function WorkspaceCanvasInner({
     <WorkspaceCanvasView
       canvasRef={canvasState.canvasRef}
       resolvedCanvasInputMode={inputMode.resolvedCanvasInputMode}
+      isCanvasWheelGestureCaptureActive={canvasState.isCanvasWheelGestureCaptureActive}
       {...spaceUi}
       {...spaceExplorer}
       handleCanvasPointerDownCapture={handleCanvasPointerDownCapture}

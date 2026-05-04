@@ -1,3 +1,8 @@
+import { enTerminalDisplayCalibration } from './en.terminalDisplayCalibration'
+import { enSettingsPanelEndpoints } from './en.settingsPanel.endpoints'
+import { enSettingsPanelAgentExecutable } from './en.settingsPanel.agentExecutable'
+import { enWorkspaceCanvasNavigationShortcutCommands } from './en.settingsPanel.shortcuts.workspaceCanvasNavigation'
+
 export const enSettingsPanel = {
   title: 'Settings',
   search: {
@@ -42,6 +47,7 @@ export const enSettingsPanel = {
     terminalFontFamilySearch: 'Search fonts…',
     terminalFontFamilyShowAll: 'Show all fonts',
     terminalFontFamilyNoResults: 'No fonts found',
+    terminalDisplayCalibration: enTerminalDisplayCalibration,
     updates: {
       title: 'Updates',
       help: 'Follow GitHub Releases and choose how OpenCove applies app updates.',
@@ -97,6 +103,7 @@ export const enSettingsPanel = {
     keyPlaceholder: 'KEY',
     valuePlaceholder: 'value',
   },
+  agentExecutable: enSettingsPanelAgentExecutable,
   quickMenu: {
     title: 'Quick Commands & Phrases',
     customize: 'Customize…',
@@ -142,9 +149,14 @@ export const enSettingsPanel = {
   },
   notifications: {
     title: 'Notifications',
+    systemNotifications: {
+      enabledLabel: 'System notifications',
+      enabledHelp:
+        'Show a native system notification when an agent transitions from working to standby.',
+    },
     agentStandbyBanner: {
-      enabledLabel: 'Agent standby banner',
-      enabledHelp: 'Show a top-right banner when an agent transitions from working to standby.',
+      enabledLabel: 'Top-right banner',
+      enabledHelp: 'Show an in-app banner when an agent transitions from working to standby.',
       contextTitle: 'Banner context',
       contextHelp: 'Choose what context chips are shown in the banner.',
       showTask: 'Show task',
@@ -278,6 +290,18 @@ export const enSettingsPanel = {
     record: 'Record',
     recording: 'Press keys…',
     clear: 'Clear',
+    spatialNavigation: {
+      title: 'Spatial Navigation',
+      help: 'Beam-first navigation across nodes and spaces.',
+      customize: 'Customize…',
+      hide: 'Hide',
+      node: {
+        title: 'Nodes',
+      },
+      space: {
+        title: 'Spaces',
+      },
+    },
     groups: {
       app: {
         title: 'App',
@@ -337,6 +361,7 @@ export const enSettingsPanel = {
         title: 'Previous Idle Space',
         help: 'Switch to the previous space with no working agent.',
       },
+      ...enWorkspaceCanvasNavigationShortcutCommands,
     },
   },
   tasks: {
@@ -403,6 +428,7 @@ export const enSettingsPanel = {
       statusLabel: 'Status',
       status: {
         installed: 'Installed ({{path}})',
+        needsRepair: 'Installed, but the launcher needs repair ({{path}})',
         notInstalled: 'Not installed',
       },
       actionsLabel: 'Actions',
@@ -428,32 +454,7 @@ export const enSettingsPanel = {
       copyToken: 'Copy',
     },
   },
-  endpoints: {
-    title: 'Endpoints',
-    list: {
-      title: 'Registered endpoints',
-      help: 'The active worker routes operations to endpoints.',
-      countLabel: 'Count',
-      localSubtitle: 'local',
-      localRemoveHelp: 'The local endpoint cannot be removed.',
-      lastPing: 'Last ping: pid {{pid}} · {{now}}',
-    },
-    actions: {
-      add: 'Add endpoint',
-      ping: 'Ping',
-      pinging: 'Pinging…',
-    },
-    register: {
-      title: 'Register endpoint',
-      help: 'Register a remote worker endpoint by hostname, port, and token. Token is never stored in renderer state.',
-      displayNameLabel: 'Display name (optional)',
-      hostnameLabel: 'Hostname',
-      portLabel: 'Port',
-      tokenLabel: 'Token',
-      tokenHelp: 'This token is submitted once and cleared after registration.',
-      tokenRequired: 'Token is required.',
-    },
-  },
+  endpoints: enSettingsPanelEndpoints,
   workspace: {
     title: 'Workspace Worktree',
     selectProjectFirst: 'Select a project first',

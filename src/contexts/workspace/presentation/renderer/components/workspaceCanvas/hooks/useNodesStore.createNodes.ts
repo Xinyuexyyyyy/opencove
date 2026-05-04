@@ -77,6 +77,7 @@ export function useWorkspaceCanvasNodeCreation({
       sessionId,
       profileId,
       runtimeKind,
+      terminalGeometry,
       title,
       anchor,
       kind,
@@ -87,7 +88,7 @@ export function useWorkspaceCanvasNodeCreation({
     }: CreateNodeInput): Promise<Node<TerminalNodeData> | null> => {
       const defaultSize =
         kind === 'agent'
-          ? resolveDefaultAgentWindowSize(standardWindowSizeBucket)
+          ? resolveDefaultAgentWindowSize(standardWindowSizeBucket, agent?.provider)
           : resolveDefaultTerminalWindowSize(standardWindowSizeBucket)
       const resolvedPlacement = resolveNodesPlacement({
         anchor,
@@ -120,6 +121,7 @@ export function useWorkspaceCanvasNodeCreation({
           sessionId,
           profileId: profileId ?? null,
           runtimeKind,
+          terminalGeometry: terminalGeometry ?? null,
           title,
           titlePinnedByUser: false,
           width: defaultSize.width,
@@ -408,7 +410,8 @@ export function useWorkspaceCanvasNodeCreation({
       document: DocumentNodeData,
       placementOptions?: NodeCreationPlacementOptions,
     ) => {
-      const defaultSize = resolveDefaultDocumentWindowSize(standardWindowSizeBucket)
+      const defaultSize =
+        placementOptions?.sizeOverride ?? resolveDefaultDocumentWindowSize(standardWindowSizeBucket)
       const resolvedPlacement = resolveNodesPlacement({
         anchor,
         size: defaultSize,

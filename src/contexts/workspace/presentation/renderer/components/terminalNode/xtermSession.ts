@@ -13,11 +13,16 @@ import { UrlLinkProvider } from './linkProviders/url-link-provider'
 import { registerTerminalSelectionTestHandle } from './testHarness'
 import { patchXtermMouseServiceWithRetry } from './patchXtermMouseService'
 import { registerTerminalHitTargetCursorScope } from './hitTargetCursorScope'
-import { registerWebglPixelSnappingMutationObserver } from './registerWebglPixelSnappingMutationObserver'
-import { activatePreferredTerminalRenderer, type ActiveTerminalRenderer } from './preferredRenderer'
+import { registerWebglCanvasTransformCleanupMutationObserver } from './registerWebglCanvasTransformCleanupMutationObserver'
+import {
+  activatePreferredTerminalRenderer,
+  type ActiveTerminalRenderer,
+  type PreferredTerminalRendererMode,
+} from './preferredRenderer'
 import { registerTerminalDiagnostics } from './registerDiagnostics'
 import { installTerminalEffectiveDevicePixelRatioController } from './effectiveDevicePixelRatio'
 import { resolveTerminalTheme, resolveTerminalUiTheme, type TerminalThemeMode } from './theme'
+import { registerTerminalDisplayMeasurementHandle } from '@contexts/settings/presentation/renderer/terminalDisplayMeasurement'
 
 type TerminalDiagnosticsHandle = ReturnType<typeof registerTerminalDiagnostics>
 let nextXtermSessionInstanceId = 1
@@ -28,6 +33,7 @@ export interface XtermSession {
   serializeAddon: SerializeAddon
   renderer: ActiveTerminalRenderer
   diagnostics: TerminalDiagnosticsHandle
+  disposePlaceholderHandoffInputCapture?: () => void
   setViewportZoom: (viewportZoom: number) => void
   setViewportInteractionActive: (active: boolean) => void
   dispose: () => void
@@ -48,12 +54,16 @@ export function createMountedXtermSession({
   cursorBlink,
   disableStdin,
   fontSize,
+  lineHeight = 1,
+  letterSpacing = 0,
   bindSearchAddonToFind,
   syncTerminalSize,
   diagnosticsEnabled,
   logTerminalDiagnostics,
   onRendererKindResolved,
-  scheduleWebglPixelSnapping,
+  onRendererIssue,
+  preferredRendererMode = 'auto',
+  scheduleWebglCanvasTransformCleanup,
   initialViewportZoom = 1,
 }: {
   nodeId: string
@@ -70,12 +80,16 @@ export function createMountedXtermSession({
   cursorBlink: boolean
   disableStdin: boolean
   fontSize: number
+  lineHeight?: number
+  letterSpacing?: number
   bindSearchAddonToFind: (addon: SearchAddon) => () => void
   syncTerminalSize: () => void
   diagnosticsEnabled: boolean
   logTerminalDiagnostics: (payload: TerminalDiagnosticsLogInput) => void
   onRendererKindResolved?: (kind: ActiveTerminalRenderer['kind']) => void
-  scheduleWebglPixelSnapping?: () => void
+  onRendererIssue?: (issue: { reason: 'context_loss'; forceDom: boolean }) => void
+  preferredRendererMode?: PreferredTerminalRendererMode
+  scheduleWebglCanvasTransformCleanup?: () => void
   initialViewportZoom?: number
 }): XtermSession {
   const resolvedTerminalUiTheme = resolveTerminalUiTheme(terminalThemeMode)
@@ -87,6 +101,8 @@ export function createMountedXtermSession({
     ...(disableStdin ? { disableStdin: true } : {}),
     fontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
     fontSize,
+    lineHeight,
+    letterSpacing,
     theme: initialTerminalTheme,
     allowProposedApi: true,
     convertEol: true,
@@ -129,7 +145,8 @@ export function createMountedXtermSession({
   let disposeTerminalSelectionTestHandle: () => void = () => undefined
   let cancelMouseServicePatch: () => void = () => undefined
   let disposeTerminalHitTargetCursorScope: () => void = () => undefined
-  let disposeWebglPixelSnappingObserver: () => void = () => undefined
+  let disposeWebglCanvasTransformCleanupObserver: () => void = () => undefined
+  let disposeTerminalDisplayMeasurementHandle: () => void = () => undefined
   let effectiveDprController = installTerminalEffectiveDevicePixelRatioController({
     terminal,
     initialViewportZoom,
@@ -144,14 +161,18 @@ export function createMountedXtermSession({
       initialViewportZoom,
       initialViewportInteractionActive: false,
       onAfterApply: () => {
-        scheduleWebglPixelSnapping?.()
+        scheduleWebglCanvasTransformCleanup?.()
       },
     })
     renderer = activatePreferredTerminalRenderer(terminal, terminalProvider, {
+      preferredMode: preferredRendererMode,
+      runtimePlatform: window.opencoveApi.meta?.platform,
+      terminalKind: nodeKindForDiagnostics,
       onRendererKindChange: kind => {
         onRendererKindResolved?.(kind)
-        scheduleWebglPixelSnapping?.()
+        scheduleWebglCanvasTransformCleanup?.()
       },
+      onRendererIssue,
     })
     onRendererKindResolved?.(renderer.kind)
     try {
@@ -170,18 +191,29 @@ export function createMountedXtermSession({
       container,
       ownerId,
     })
-    disposeWebglPixelSnappingObserver = registerWebglPixelSnappingMutationObserver({
-      container,
-      isWebglRenderer: () => renderer.kind === 'webgl',
-      scheduleWebglPixelSnapping: scheduleWebglPixelSnapping ?? (() => undefined),
-    })
+    disposeWebglCanvasTransformCleanupObserver =
+      registerWebglCanvasTransformCleanupMutationObserver({
+        container,
+        isWebglRenderer: () => renderer.kind === 'webgl',
+        scheduleWebglCanvasTransformCleanup:
+          scheduleWebglCanvasTransformCleanup ?? (() => undefined),
+      })
     if (isTestEnvironment) {
-      disposeTerminalSelectionTestHandle = registerTerminalSelectionTestHandle(nodeId, terminal)
+      disposeTerminalSelectionTestHandle = registerTerminalSelectionTestHandle(
+        nodeId,
+        terminal,
+        fitAddon,
+      )
     }
     renderer.clearTextureAtlas()
     syncTerminalSize()
+    disposeTerminalDisplayMeasurementHandle = registerTerminalDisplayMeasurementHandle({
+      nodeId,
+      terminal,
+      fitAddon,
+    })
     requestAnimationFrame(syncTerminalSize)
-    scheduleWebglPixelSnapping?.()
+    scheduleWebglCanvasTransformCleanup?.()
   } else {
     onRendererKindResolved?.(renderer.kind)
   }
@@ -206,15 +238,17 @@ export function createMountedXtermSession({
     serializeAddon,
     renderer,
     diagnostics,
+    disposePlaceholderHandoffInputCapture: undefined,
     setViewportZoom: effectiveDprController.setViewportZoom,
     setViewportInteractionActive: effectiveDprController.setViewportInteractionActive,
     dispose: () => {
       cancelMouseServicePatch()
       disposeTerminalHitTargetCursorScope()
-      disposeWebglPixelSnappingObserver()
+      disposeWebglCanvasTransformCleanupObserver()
       effectiveDprController.dispose()
       renderer.dispose()
       diagnostics.dispose()
+      disposeTerminalDisplayMeasurementHandle()
       disposeTerminalSelectionTestHandle()
       disposeTerminalFind()
       terminal.dispose()

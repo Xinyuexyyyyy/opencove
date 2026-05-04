@@ -1,5 +1,8 @@
 import { toFileUri } from '@contexts/filesystem/domain/fileUri'
-import { resolveAgentLaunchEnv } from '@contexts/settings/domain/agentSettings'
+import {
+  resolveAgentExecutablePathOverride,
+  resolveAgentLaunchEnv,
+} from '@contexts/settings/domain/agentSettings'
 import { isResumeSessionBindingVerified } from '../../../utils/agentResumeBinding'
 import { toErrorMessage } from '../helpers'
 import type {
@@ -15,6 +18,7 @@ import {
   setTaskLastError,
   type ResumeTaskAgentSessionContext,
 } from './useTaskActions.agentSession.shared'
+import { resolveDefaultAgentLaunchGeometry } from './agentLaunchGeometry'
 
 export async function resumeTaskAgentSessionAction(
   taskNodeId: string,
@@ -92,6 +96,15 @@ export async function resumeTaskAgentSessionAction(
   }
 
   const env = resolveAgentLaunchEnv(context.agentSettings, record.provider)
+  const executablePathOverride = resolveAgentExecutablePathOverride(
+    context.agentSettings,
+    record.provider,
+  )
+  const launchGeometry = resolveDefaultAgentLaunchGeometry({
+    bucket: context.agentSettings.standardWindowSizeBucket,
+    provider: record.provider,
+    terminalFontSize: context.agentSettings.terminalFontSize,
+  })
   const mergedEnv =
     context.environmentVariables && Object.keys(context.environmentVariables).length > 0
       ? { ...env, ...context.environmentVariables }
@@ -120,15 +133,19 @@ export async function resumeTaskAgentSessionAction(
           mode: 'resume',
           model: record.model,
           resumeSessionId: record.resumeSessionId,
+          ...(executablePathOverride ? { executablePathOverride } : {}),
           ...(Object.keys(mergedEnv).length > 0 ? { env: mergedEnv } : {}),
           agentFullAccess: context.agentSettings.agentFullAccess,
+          cols: launchGeometry.terminalGeometry.cols,
+          rows: launchGeometry.terminalGeometry.rows,
         },
       })
 
       launchedSessionId = launched.sessionId
-      launchedProfileId = context.agentSettings.defaultTerminalProfileId
+      launchedProfileId = launched.profileId
+      launchedRuntimeKind = launched.runtimeKind ?? undefined
       launchedEffectiveModel = launched.effectiveModel
-      launchedResumeSessionId = launched.resumeSessionId ?? record.resumeSessionId
+      launchedResumeSessionId = record.resumeSessionId
       agentDirectory = launched.executionContext.workingDirectory
     } else {
       const launched = await window.opencoveApi.agent.launch({
@@ -139,24 +156,26 @@ export async function resumeTaskAgentSessionAction(
         mode: 'resume',
         model: record.model,
         resumeSessionId: record.resumeSessionId,
+        ...(executablePathOverride ? { executablePathOverride } : {}),
         ...(Object.keys(mergedEnv).length > 0 ? { env: mergedEnv } : {}),
         agentFullAccess: context.agentSettings.agentFullAccess,
-        cols: 80,
-        rows: 24,
+        cols: launchGeometry.terminalGeometry.cols,
+        rows: launchGeometry.terminalGeometry.rows,
       })
 
       launchedSessionId = launched.sessionId
       launchedProfileId = launched.profileId ?? null
       launchedRuntimeKind = launched.runtimeKind
       launchedEffectiveModel = launched.effectiveModel
-      launchedResumeSessionId = launched.resumeSessionId ?? record.resumeSessionId
+      launchedResumeSessionId = record.resumeSessionId
     }
 
     const createdAgentNode = await context.createNodeForSession({
       sessionId: launchedSessionId,
       profileId: launchedProfileId,
       runtimeKind: launchedRuntimeKind,
-      title: context.buildAgentNodeTitle(record.provider, launchedEffectiveModel),
+      terminalGeometry: launchGeometry.terminalGeometry,
+      title: context.buildAgentNodeTitle(record.provider, taskNode.data.title),
       anchor: createTaskAgentAnchor(taskNode),
       kind: 'agent',
       placement: {
@@ -213,7 +232,7 @@ export async function resumeTaskAgentSessionAction(
                       ...session,
                       lastRunAt: now,
                       lastDirectory: taskDirectory,
-                      resumeSessionId: launchedResumeSessionId ?? session.resumeSessionId,
+                      resumeSessionId: session.resumeSessionId,
                       resumeSessionIdVerified: true,
                     }
                   : session,

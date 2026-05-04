@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from 'react'
+import { useEffect, useRef, type RefObject } from 'react'
 import type { Terminal } from '@xterm/xterm'
 import { DEFAULT_TERMINAL_FONT_FAMILY } from './constants'
 import {
@@ -36,7 +36,11 @@ function isTerminalAtBottom(terminal: Terminal): boolean {
 export function useTerminalAppearanceSync({
   terminalRef,
   syncTerminalSize,
+  commitTerminalGeometry,
   terminalFontSize,
+  displayTerminalFontSize = terminalFontSize,
+  displayTerminalLineHeight = 1,
+  displayTerminalLetterSpacing = 0,
   terminalFontFamily,
   width,
   height,
@@ -45,22 +49,21 @@ export function useTerminalAppearanceSync({
 }: {
   terminalRef: RefObject<Terminal | null>
   syncTerminalSize: () => void
+  commitTerminalGeometry: () => void
   terminalFontSize: number
+  displayTerminalFontSize?: number
+  displayTerminalLineHeight?: number
+  displayTerminalLetterSpacing?: number
   terminalFontFamily: string | null
   width: number
   height: number
   viewportZoom: number
   isViewportInteractionActive: boolean
 }): void {
-  useEffect(() => {
-    const terminal = terminalRef.current
-    if (!terminal) {
-      return
-    }
-
-    terminal.options.fontSize = terminalFontSize
-    syncTerminalSize()
-  }, [syncTerminalSize, terminalFontSize, terminalRef])
+  const hasInitializedFontSizeRef = useRef(false)
+  const hasInitializedFontFamilyRef = useRef(false)
+  const previousSharedFontSizeRef = useRef(terminalFontSize)
+  const previousSharedFontFamilyRef = useRef(terminalFontFamily)
 
   useEffect(() => {
     const terminal = terminalRef.current
@@ -68,9 +71,68 @@ export function useTerminalAppearanceSync({
       return
     }
 
+    const sharedFontSizeChanged = previousSharedFontSizeRef.current !== terminalFontSize
+    previousSharedFontSizeRef.current = terminalFontSize
+    terminal.options.fontSize = displayTerminalFontSize
+    const frame = requestAnimationFrame(() => {
+      if (hasInitializedFontSizeRef.current && sharedFontSizeChanged) {
+        commitTerminalGeometry()
+        return
+      }
+
+      hasInitializedFontSizeRef.current = true
+      syncTerminalSize()
+    })
+
+    return () => {
+      cancelAnimationFrame(frame)
+    }
+  }, [
+    commitTerminalGeometry,
+    displayTerminalFontSize,
+    syncTerminalSize,
+    terminalFontSize,
+    terminalRef,
+  ])
+
+  useEffect(() => {
+    const terminal = terminalRef.current
+    if (!terminal) {
+      return
+    }
+
+    terminal.options.lineHeight = displayTerminalLineHeight
+    terminal.options.letterSpacing = displayTerminalLetterSpacing
+    const frame = requestAnimationFrame(syncTerminalSize)
+
+    return () => {
+      cancelAnimationFrame(frame)
+    }
+  }, [displayTerminalLetterSpacing, displayTerminalLineHeight, syncTerminalSize, terminalRef])
+
+  useEffect(() => {
+    const terminal = terminalRef.current
+    if (!terminal) {
+      return
+    }
+
+    const sharedFontFamilyChanged = previousSharedFontFamilyRef.current !== terminalFontFamily
+    previousSharedFontFamilyRef.current = terminalFontFamily
     terminal.options.fontFamily = terminalFontFamily ?? DEFAULT_TERMINAL_FONT_FAMILY
-    syncTerminalSize()
-  }, [syncTerminalSize, terminalFontFamily, terminalRef])
+    const frame = requestAnimationFrame(() => {
+      if (hasInitializedFontFamilyRef.current && sharedFontFamilyChanged) {
+        commitTerminalGeometry()
+        return
+      }
+
+      hasInitializedFontFamilyRef.current = true
+      syncTerminalSize()
+    })
+
+    return () => {
+      cancelAnimationFrame(frame)
+    }
+  }, [commitTerminalGeometry, syncTerminalSize, terminalFontFamily, terminalRef])
 
   useEffect(() => {
     const frame = requestAnimationFrame(syncTerminalSize)

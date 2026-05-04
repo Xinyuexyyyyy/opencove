@@ -5,6 +5,7 @@ import type { WebSessionManager } from './http/webSessionManager'
 import type { WorkerTopologyStore } from './topology/topologyStore'
 import type { MultiEndpointPtyRuntime } from './ptyStream/multiEndpointPtyRuntime'
 import type { PtyStreamHub } from './ptyStream/ptyStreamHub'
+import type { SyncEventPayload } from '../../../shared/contracts/dto'
 import { registerSystemHandlers } from './handlers/systemHandlers'
 import { registerProjectHandlers } from './handlers/projectHandlers'
 import { registerSpaceHandlers } from './handlers/spaceHandlers'
@@ -16,12 +17,15 @@ import { registerIntegrationGitHubHandlers } from './handlers/integrationGithubH
 import { registerIntegrationGitHubMountHandlers } from './handlers/integrationGithubMountHandlers'
 import { registerWorktreeHandlers } from './handlers/worktreeHandlers'
 import { registerWorkspaceHandlers } from './handlers/workspaceHandlers'
+import { registerAgentSessionCatalogHandlers } from './handlers/agentSessionCatalogHandlers'
 import { registerSessionHandlers } from './handlers/sessionHandlers'
 import { registerSessionStreamingHandlers } from './handlers/sessionStreamingHandlers'
 import { registerPtyMountHandlers } from './handlers/ptyMountHandlers'
 import { registerSyncHandlers } from './handlers/syncHandlers'
 import { registerTopologyHandlers } from './handlers/topologyHandlers'
 import { registerAuthHandlers } from './handlers/authHandlers'
+import { registerNodeControlHandlers } from './handlers/nodeControlHandlers'
+import type { EndpointHealthService } from './topology/endpointHealthService'
 
 export function registerControlSurfaceHandlers(
   controlSurface: ControlSurface,
@@ -34,6 +38,9 @@ export function registerControlSurfaceHandlers(
     ptyRuntime: MultiEndpointPtyRuntime
     ptyStreamHub: PtyStreamHub
     deleteEntry?: (uri: string) => Promise<void>
+    publishSyncEvent?: (payload: SyncEventPayload) => number
+    closeWebsiteNode?: (nodeId: string) => Promise<void> | void
+    endpointHealth: EndpointHealthService
   },
 ): void {
   registerSystemHandlers(controlSurface)
@@ -41,6 +48,7 @@ export function registerControlSurfaceHandlers(
   registerTopologyHandlers(controlSurface, {
     topology: deps.topology,
     approvedWorkspaces: deps.approvedWorkspaces,
+    endpointHealth: deps.endpointHealth,
   })
   registerProjectHandlers(controlSurface, deps.getPersistenceStore)
   registerSpaceHandlers(controlSurface, deps.getPersistenceStore)
@@ -73,6 +81,9 @@ export function registerControlSurfaceHandlers(
     approvedWorkspaces: deps.approvedWorkspaces,
     getPersistenceStore: deps.getPersistenceStore,
   })
+  registerAgentSessionCatalogHandlers(controlSurface, {
+    approvedWorkspaces: deps.approvedWorkspaces,
+  })
   registerSessionHandlers(controlSurface, {
     userDataPath: deps.userDataPath,
     approvedWorkspaces: deps.approvedWorkspaces,
@@ -92,6 +103,12 @@ export function registerControlSurfaceHandlers(
     topology: deps.topology,
     ptyRuntime: deps.ptyRuntime,
     ptyStreamHub: deps.ptyStreamHub,
+  })
+  registerNodeControlHandlers(controlSurface, {
+    topology: deps.topology,
+    getPersistenceStore: deps.getPersistenceStore,
+    publishSyncEvent: deps.publishSyncEvent,
+    closeWebsiteNode: deps.closeWebsiteNode,
   })
   registerSyncHandlers(controlSurface, deps.getPersistenceStore)
 }

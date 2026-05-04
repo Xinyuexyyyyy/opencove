@@ -2,6 +2,7 @@ import type { Node } from '@xyflow/react'
 import type {
   AgentNodeData,
   Point,
+  Size,
   SpaceArchiveRecord,
   TaskPriority,
   TaskRuntimeStatus,
@@ -12,7 +13,7 @@ import type {
   WorkspaceViewport,
 } from '../../types'
 import type { AgentSettings } from '@contexts/settings/domain/agentSettings'
-import type { MountDto, TerminalRuntimeKind } from '@shared/contracts/dto'
+import type { MountDto, TerminalPtyGeometry, TerminalRuntimeKind } from '@shared/contracts/dto'
 import type { LabelColor } from '@shared/types/labelColor'
 
 export type WorkspaceCanvasMessageTone = 'info' | 'warning' | 'error'
@@ -44,6 +45,7 @@ export interface WorkspaceCanvasProps {
   agentSettings: AgentSettings
   isFocusNodeTargetZoomPreviewing?: boolean
   focusNodeId?: string | null
+  focusSpaceId?: string | null
   focusSequence?: number
 }
 
@@ -130,12 +132,16 @@ export interface SpaceDragState {
 
 export type TrackpadGestureAction = 'pan' | 'pinch'
 export type TrackpadGestureTarget = 'canvas' | 'node'
+export type CanvasWheelGesturePhase = 'active' | 'settling'
 
-export interface TrackpadGestureLockState {
+export interface CanvasWheelGestureSessionState {
   action: TrackpadGestureAction
-  target: TrackpadGestureTarget
+  owner: TrackpadGestureTarget
+  phase: CanvasWheelGesturePhase
   lastTimestamp: number
 }
+
+export type TrackpadGestureLockState = CanvasWheelGestureSessionState
 
 export interface TaskCreatorState {
   anchor: Point
@@ -185,6 +191,7 @@ export interface CreateNodeInput {
   sessionId: string
   profileId?: string | null
   runtimeKind?: TerminalRuntimeKind
+  terminalGeometry?: TerminalPtyGeometry | null
   title: string
   anchor: Point
   kind: 'terminal' | 'agent'
@@ -205,6 +212,7 @@ export interface NodePlacementOptions {
 
 export interface NodeCreationPlacementOptions extends NodePlacementOptions {
   focusViewportOnCreate?: boolean
+  sizeOverride?: Size
 }
 
 export interface WorkspaceCanvasQuickPreviewState {
@@ -212,7 +220,7 @@ export interface WorkspaceCanvasQuickPreviewState {
   mountId: string | null
   uri: string
   title: string
-  kind: 'document' | 'image'
+  kind: 'document' | 'image' | 'audio' | 'video'
   rect: WorkspaceSpaceRect
   createAnchor: Point
   createPlacement?: NodeCreationPlacementOptions

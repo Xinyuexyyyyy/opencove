@@ -16,19 +16,17 @@ import {
   type UiLanguage,
   type UiTheme,
 } from '@contexts/settings/domain/agentSettings'
-import { AgentSection } from './settingsPanel/AgentSection'
 import { CanvasSection } from './settingsPanel/CanvasSection'
 import { EndpointsSection } from './settingsPanel/EndpointsSection'
 import { ExperimentalSection } from './settingsPanel/ExperimentalSection'
 import { GeneralSection } from './settingsPanel/GeneralSection'
 import { IntegrationsSection } from './settingsPanel/IntegrationsSection'
-import { ModelOverrideSection } from './settingsPanel/ModelOverrideSection'
 import { NotificationsSection } from './settingsPanel/NotificationsSection'
 import { SettingsPanelSidebar } from './settingsPanel/SettingsPanelSidebar'
 import { ShortcutsSection } from './settingsPanel/ShortcutsSection'
 import { TaskConfigurationSection } from './settingsPanel/TaskConfigurationSection'
 import { QuickMenuSection } from './settingsPanel/QuickMenuSection'
-import { AgentEnvSection } from './settingsPanel/AgentEnvSection'
+import { AgentSettingsPage } from './settingsPanel/AgentSettingsPage'
 import { WorkerSection } from './settingsPanel/WorkerSection'
 import { WorkspaceSection } from './settingsPanel/WorkspaceSection'
 import type { SettingsSearchResult } from './settingsPanel/settingsSearchIndex'
@@ -100,6 +98,8 @@ export function SettingsPanel({
     onChange({ ...settings, archiveSpaceDeleteWorktreeByDefault: enabled })
   const updateArchiveSpaceDeleteBranchByDefault = (enabled: boolean): void =>
     onChange({ ...settings, archiveSpaceDeleteBranchByDefault: enabled })
+  const updateSystemNotificationsEnabled = (enabled: boolean): void =>
+    onChange({ ...settings, systemNotificationsEnabled: enabled })
   const updateStandbyBannerEnabled = (enabled: boolean): void =>
     onChange({ ...settings, standbyBannerEnabled: enabled })
   const updateStandbyBannerShowTask = (enabled: boolean): void =>
@@ -128,6 +128,13 @@ export function SettingsPanel({
     onChange({ ...settings, terminalFontSize: Math.round(fontSize) })
   const updateTerminalFontFamily = (family: string | null): void =>
     onChange({ ...settings, terminalFontFamily: family })
+  const updateTerminalAutoReference = (enabled: boolean): void =>
+    onChange({ ...settings, terminalDisplayAutoReferenceEnabled: enabled })
+  const updateTerminalCompensation = (enabled: boolean): void =>
+    onChange({ ...settings, terminalDisplayCalibrationCompensationEnabled: enabled })
+  const updateTerminalDisplayReference = (
+    reference: AgentSettings['terminalDisplayReference'],
+  ): void => onChange({ ...settings, terminalDisplayReference: reference })
   const updateUiFontSize = (fontSize: number): void =>
     onChange({ ...settings, uiFontSize: fontSize })
   const updateUpdatePolicy = (policy: AgentSettings['updatePolicy']): void => {
@@ -149,6 +156,9 @@ export function SettingsPanel({
   const updateAgentEnvByProvider = (
     agentEnvByProvider: AgentSettings['agentEnvByProvider'],
   ): void => onChange({ ...settings, agentEnvByProvider })
+  const updateAgentExecutablePathOverrideByProvider = (
+    agentExecutablePathOverrideByProvider: AgentSettings['agentExecutablePathOverrideByProvider'],
+  ): void => onChange({ ...settings, agentExecutablePathOverrideByProvider })
   const updateDisableAppShortcutsWhenTerminalFocused = (enabled: boolean): void =>
     onChange({ ...settings, disableAppShortcutsWhenTerminalFocused: enabled })
   const updateKeybindings = (keybindings: AgentSettings['keybindings']): void =>
@@ -302,6 +312,11 @@ export function SettingsPanel({
                 uiFontSize={settings.uiFontSize}
                 terminalFontSize={settings.terminalFontSize}
                 terminalFontFamily={settings.terminalFontFamily}
+                terminalDisplayAutoReferenceEnabled={settings.terminalDisplayAutoReferenceEnabled}
+                terminalDisplayCalibrationCompensationEnabled={
+                  settings.terminalDisplayCalibrationCompensationEnabled
+                }
+                terminalDisplayReference={settings.terminalDisplayReference}
                 updatePolicy={settings.updatePolicy}
                 updateChannel={settings.updateChannel}
                 updateState={updateState}
@@ -310,6 +325,9 @@ export function SettingsPanel({
                 onChangeUiFontSize={updateUiFontSize}
                 onChangeTerminalFontSize={updateTerminalFontSize}
                 onChangeTerminalFontFamily={updateTerminalFontFamily}
+                onChangeTerminalDisplayAutoReferenceEnabled={updateTerminalAutoReference}
+                onChangeTerminalDisplayCalibrationCompensationEnabled={updateTerminalCompensation}
+                onChangeTerminalDisplayReference={updateTerminalDisplayReference}
                 onChangeUpdatePolicy={updateUpdatePolicy}
                 onChangeUpdateChannel={updateUpdateChannel}
                 onCheckForUpdates={onCheckForUpdates}
@@ -327,41 +345,35 @@ export function SettingsPanel({
             ) : null}
 
             {activePageId === 'agent' ? (
-              <>
-                <AgentSection
-                  defaultProvider={settings.defaultProvider}
-                  agentProviderOrder={settings.agentProviderOrder}
-                  agentFullAccess={settings.agentFullAccess}
-                  onChangeDefaultProvider={updateDefaultProvider}
-                  onChangeAgentProviderOrder={updateAgentProviderOrder}
-                  onChangeAgentFullAccess={updateAgentFullAccess}
-                />
-                <ModelOverrideSection
-                  settings={settings}
-                  modelCatalogByProvider={modelCatalogByProvider}
-                  addModelInputByProvider={addModelInputByProvider}
-                  onToggleCustomModelEnabled={updateProviderCustomModelEnabled}
-                  onSelectProviderModel={selectProviderModel}
-                  onRemoveCustomModelOption={removeCustomModelOption}
-                  onChangeAddModelInput={updateAddModelInput}
-                  onAddCustomModelOption={addCustomModelOption}
-                />
-                <AgentEnvSection
-                  agentProviderOrder={settings.agentProviderOrder}
-                  agentEnvByProvider={settings.agentEnvByProvider}
-                  onChangeAgentEnvByProvider={updateAgentEnvByProvider}
-                />
-              </>
+              <AgentSettingsPage
+                settings={settings}
+                modelCatalogByProvider={modelCatalogByProvider}
+                addModelInputByProvider={addModelInputByProvider}
+                onChangeDefaultProvider={updateDefaultProvider}
+                onChangeAgentProviderOrder={updateAgentProviderOrder}
+                onChangeAgentFullAccess={updateAgentFullAccess}
+                onToggleCustomModelEnabled={updateProviderCustomModelEnabled}
+                onSelectProviderModel={selectProviderModel}
+                onRemoveCustomModelOption={removeCustomModelOption}
+                onChangeAddModelInput={updateAddModelInput}
+                onAddCustomModelOption={addCustomModelOption}
+                onChangeAgentEnvByProvider={updateAgentEnvByProvider}
+                onChangeAgentExecutablePathOverrideByProvider={
+                  updateAgentExecutablePathOverrideByProvider
+                }
+              />
             ) : null}
 
             {activePageId === 'notifications' ? (
               <NotificationsSection
+                systemNotificationsEnabled={settings.systemNotificationsEnabled}
                 standbyBannerEnabled={settings.standbyBannerEnabled}
                 standbyBannerShowTask={settings.standbyBannerShowTask}
                 standbyBannerShowSpace={settings.standbyBannerShowSpace}
                 standbyBannerShowBranch={settings.standbyBannerShowBranch}
                 standbyBannerShowPullRequest={settings.standbyBannerShowPullRequest}
                 githubPullRequestsEnabled={settings.githubPullRequestsEnabled}
+                onChangeSystemNotificationsEnabled={updateSystemNotificationsEnabled}
                 onChangeStandbyBannerEnabled={updateStandbyBannerEnabled}
                 onChangeStandbyBannerShowTask={updateStandbyBannerShowTask}
                 onChangeStandbyBannerShowSpace={updateStandbyBannerShowSpace}

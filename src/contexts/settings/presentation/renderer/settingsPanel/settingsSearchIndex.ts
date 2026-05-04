@@ -1,6 +1,10 @@
 import type { TranslateFn } from '@app/renderer/i18n'
 import type { WorkspaceState } from '@contexts/workspace/presentation/renderer/types'
 import { getFolderName, getWorkspacePageId, type SettingsPageId } from '../SettingsPanel.shared'
+import {
+  AGENT_SETTINGS_SEARCH_ENTRY_DEFINITIONS,
+  type AgentSettingsSearchEntryDefinition,
+} from './settingsSearchIndex.agent'
 
 export interface SettingsSearchEntry {
   id: string
@@ -27,7 +31,9 @@ interface CoreSettingsSearchEntryDefinition {
   keywords?: string[]
 }
 
-const CORE_SEARCH_ENTRY_DEFINITIONS: CoreSettingsSearchEntryDefinition[] = [
+const CORE_SEARCH_ENTRY_DEFINITIONS: Array<
+  CoreSettingsSearchEntryDefinition | AgentSettingsSearchEntryDefinition
+> = [
   {
     id: 'general.language',
     pageId: 'general',
@@ -69,6 +75,15 @@ const CORE_SEARCH_ENTRY_DEFINITIONS: CoreSettingsSearchEntryDefinition[] = [
     titleKey: 'settingsPanel.general.terminalFontFamily',
     anchorId: 'settings-terminal-font-family',
     keywords: ['font', 'family', 'terminal', 'shell', '终端', '字体'],
+  },
+  {
+    id: 'general.terminal-display-calibration',
+    pageId: 'general',
+    pageLabelKey: 'settingsPanel.nav.general',
+    titleKey: 'settingsPanel.general.terminalDisplayCalibration.title',
+    descriptionKey: 'settingsPanel.general.terminalDisplayCalibration.help',
+    anchorId: 'settings-section-terminal-display-calibration',
+    keywords: ['terminal', 'display', 'calibration', 'web ui', 'desktop', '终端', '校准'],
   },
   {
     id: 'general.updates',
@@ -123,54 +138,7 @@ const CORE_SEARCH_ENTRY_DEFINITIONS: CoreSettingsSearchEntryDefinition[] = [
     keywordKeys: ['settingsPanel.endpoints.actions.add', 'settingsPanel.endpoints.actions.ping'],
     keywords: ['remote worker', 'register', 'endpoint', '远程'],
   },
-  {
-    id: 'agent.default',
-    pageId: 'agent',
-    pageLabelKey: 'settingsPanel.nav.agent',
-    titleKey: 'settingsPanel.agent.defaultAgentLabel',
-    descriptionKey: 'settingsPanel.agent.defaultAgentHelp',
-    anchorId: 'settings-default-provider',
-    keywords: ['provider', 'claude', 'codex', 'gemini', 'opencode', '默认'],
-  },
-  {
-    id: 'agent.order',
-    pageId: 'agent',
-    pageLabelKey: 'settingsPanel.nav.agent',
-    titleKey: 'settingsPanel.agent.agentProviderOrderLabel',
-    descriptionKey: 'settingsPanel.agent.agentProviderOrderHelp',
-    anchorId: 'settings-section-agent',
-    keywords: ['provider', 'order', 'menu', '排序'],
-  },
-  {
-    id: 'agent.full-access',
-    pageId: 'agent',
-    pageLabelKey: 'settingsPanel.nav.agent',
-    titleKey: 'settingsPanel.agent.fullAccessLabel',
-    descriptionKey: 'settingsPanel.agent.fullAccessHelp',
-    anchorId: 'settings-agent-full-access',
-    keywords: ['sandbox', 'approval', 'permission', '权限', '沙箱'],
-  },
-  {
-    id: 'agent.models',
-    pageId: 'agent',
-    pageLabelKey: 'settingsPanel.nav.agent',
-    titleKey: 'settingsPanel.models.title',
-    anchorId: 'settings-section-model-override',
-    keywordKeys: [
-      'settingsPanel.models.useCustomModel',
-      'settingsPanel.models.addModelPlaceholder',
-    ],
-    keywords: ['model', 'override', '模型'],
-  },
-  {
-    id: 'agent.env',
-    pageId: 'agent',
-    pageLabelKey: 'settingsPanel.nav.agent',
-    titleKey: 'settingsPanel.agentEnv.title',
-    descriptionKey: 'settingsPanel.agentEnv.help',
-    anchorId: 'settings-section-agent-env',
-    keywords: ['environment', 'env', 'variable', '环境变量'],
-  },
+  ...AGENT_SETTINGS_SEARCH_ENTRY_DEFINITIONS,
   {
     id: 'notifications.standby-banner',
     pageId: 'notifications',
@@ -185,7 +153,16 @@ const CORE_SEARCH_ENTRY_DEFINITIONS: CoreSettingsSearchEntryDefinition[] = [
       'settingsPanel.notifications.agentStandbyBanner.showBranch',
       'settingsPanel.notifications.agentStandbyBanner.showPullRequest',
     ],
-    keywords: ['banner', 'standby', 'notification', '通知'],
+    keywords: ['banner', 'standby', 'notification', '通知', '横幅'],
+  },
+  {
+    id: 'notifications.system-notifications',
+    pageId: 'notifications',
+    pageLabelKey: 'settingsPanel.nav.notifications',
+    titleKey: 'settingsPanel.notifications.systemNotifications.enabledLabel',
+    descriptionKey: 'settingsPanel.notifications.systemNotifications.enabledHelp',
+    anchorId: 'settings-section-notifications',
+    keywords: ['system', 'native', 'notification', '通知', '系统通知'],
   },
   {
     id: 'canvas.input-mode',

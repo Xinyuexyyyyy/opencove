@@ -13,7 +13,7 @@ import { resolveRequestAuth } from './http/requestAuth'
 import { writeSseEvent, type SyncEventPayload } from './http/syncSse'
 import { tryHandleWebAuthRoutes } from './http/webAuthRoutes'
 import { gateWebUiEntrypoint } from './http/webUiEntryGate'
-import { publishSyncEvent } from './http/publishSyncEvent'
+import { publishLiveSyncEvent, publishSyncEvent } from './http/publishSyncEvent'
 import { shouldAllowDevWebUiOrigin } from './http/devWebUiOrigin'
 import { buildUnauthorizedResult } from './http/unauthorizedResult'
 import { createLazyPersistenceStore } from './http/lazyPersistenceStore'
@@ -22,6 +22,8 @@ import { createMultiEndpointPtyRuntime } from './ptyStream/multiEndpointPtyRunti
 import type { RegisterControlSurfaceHttpServerOptions } from './controlSurfaceHttpServerOptions'
 import { createWorkerTopologyStore } from './topology/topologyStore'
 import { registerControlSurfaceHandlers } from './registerControlSurfaceHandlers'
+import { createManagedSshEndpointRuntime } from './topology/managedSshEndpointRuntime'
+import { createEndpointHealthService } from './topology/endpointHealthService'
 const DEFAULT_CONTROL_SURFACE_HOSTNAME = '127.0.0.1'
 const DEFAULT_CONTROL_SURFACE_CONNECTION_FILE = 'control-surface.json'
 const CONTROL_SURFACE_CONNECTION_VERSION = 1 as const
@@ -80,7 +82,16 @@ export function registerControlSurfaceHttpServer(
     },
   }
 
-  const topology = createWorkerTopologyStore({ userDataPath: options.userDataPath })
+  const managedSshRuntime = createManagedSshEndpointRuntime()
+  const topology = createWorkerTopologyStore({
+    userDataPath: options.userDataPath,
+    resolveManagedSshEndpointConnection: managedSshRuntime.resolveConnection,
+    disposeManagedSshEndpointRuntime: managedSshRuntime.disposeEndpoint,
+  })
+  const endpointHealth = createEndpointHealthService({
+    topology,
+    managedRuntime: managedSshRuntime,
+  })
   const ptyRuntime = createMultiEndpointPtyRuntime({
     localRuntime: options.ptyRuntime,
     topology,
@@ -102,6 +113,14 @@ export function registerControlSurfaceHttpServer(
     createPersistenceStore: options.createPersistenceStore,
   })
   const getPersistenceStore = persistence.getPersistenceStore
+  const syncClients = new Set<ServerResponse>()
+  const syncEventBuffer: SyncEventPayload[] = []
+  const publishSyncEventToLiveClients = (payload: SyncEventPayload): number =>
+    publishLiveSyncEvent({
+      syncClients,
+      payload,
+      desktopSink: options.desktopSyncEventSink,
+    })
 
   const controlSurface = createControlSurface()
   registerControlSurfaceHandlers(controlSurface, {
@@ -113,13 +132,13 @@ export function registerControlSurfaceHttpServer(
     ptyRuntime,
     deleteEntry: options.deleteEntry,
     ptyStreamHub: ptyStreamService.hub,
+    publishSyncEvent: publishSyncEventToLiveClients,
+    closeWebsiteNode: options.closeWebsiteNode,
+    endpointHealth,
   })
   let closed = false
   let disposePromise: Promise<void> | null = null
   let pendingConnectionWrite: Promise<void> | null = null
-  const syncClients = new Set<ServerResponse>()
-  const syncEventBuffer: SyncEventPayload[] = []
-
   let resolveReady: ((info: ControlSurfaceConnectionInfo) => void) | null = null
   let rejectReady: ((error: Error) => void) | null = null
   const ready = new Promise<ControlSurfaceConnectionInfo>((resolvePromise, rejectPromise) => {
@@ -310,6 +329,7 @@ export function registerControlSurfaceHttpServer(
               syncClients,
               syncEventBuffer,
               maxBufferSize: MAX_SYNC_EVENT_BUFFER,
+              desktopSink: options.desktopSyncEventSink,
               payload: {
                 type: 'app_state.updated',
                 revision: revisionAfter,
@@ -433,6 +453,12 @@ export function registerControlSurfaceHttpServer(
 
         try {
           ptyRuntime.dispose()
+        } catch {
+          // ignore
+        }
+
+        try {
+          await managedSshRuntime.dispose()
         } catch {
           // ignore
         }

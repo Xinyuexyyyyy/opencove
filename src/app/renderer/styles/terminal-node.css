@@ -6,7 +6,6 @@
   opacity: 0;
   pointer-events: none;
 }
-
 .terminal-node {
   border-radius: 14px;
   border: 1px solid var(--cove-node-border);
@@ -17,12 +16,10 @@
   box-shadow: 0 10px 30px var(--cove-node-shadow-color);
   position: relative;
 }
-
 .terminal-node--selected-surface {
   border-color: var(--cove-node-selection-border);
   box-shadow: var(--cove-node-selection-shadow);
 }
-
 .terminal-node__header {
   height: 34px;
   display: flex;
@@ -34,11 +31,9 @@
   border-bottom: 1px solid var(--cove-node-header-border);
   cursor: grab;
 }
-
 .terminal-node__header:active {
   cursor: grabbing;
 }
-
 .terminal-node__title {
   flex: 1;
   min-width: 0;
@@ -83,6 +78,32 @@
 
 .terminal-node__terminal--hydrating {
   opacity: 1;
+}
+
+.terminal-node__recovering {
+  position: absolute;
+  inset: 34px 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  color: color-mix(in srgb, var(--cove-text-muted) 86%, white);
+  font-size: calc(12px * var(--cove-ui-font-scale));
+  line-height: 1.4;
+  text-align: center;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(107, 138, 236, 0.1), transparent 42%),
+    color-mix(in srgb, var(--cove-terminal-background) 72%, transparent);
+  pointer-events: none;
+}
+
+.terminal-node__recovering-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+  animation: terminal-node-recovering-pulse 1.2s ease-in-out infinite;
 }
 
 .terminal-node__transcript {
@@ -180,6 +201,7 @@
 }
 
 .terminal-node__terminal .xterm {
+  box-sizing: border-box;
   width: 100%;
   height: 100%;
   padding: 8px;
@@ -290,6 +312,21 @@
 
 .terminal-node__title-button:hover {
   color: var(--cove-text);
+}
+
+.terminal-node__title-editable {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+}
+
+.terminal-node__title-prefix {
+  flex: 0 0 auto;
+  font-size: calc(12px * var(--cove-ui-font-scale));
+  color: var(--cove-text);
+  white-space: nowrap;
 }
 
 .terminal-node__title-input {
@@ -426,15 +463,6 @@
   background: transparent;
 }
 
-.terminal-node__action-icon {
-  width: 13px;
-  height: 13px;
-}
-
-.terminal-node__action-icon--spinning {
-  animation: terminal-node-spin 0.8s linear infinite;
-}
-
 .terminal-node__close {
   margin-left: 4px;
 }
@@ -457,25 +485,15 @@
   }
 }
 
-/* Font rendering optimization for xterm DOM renderer */
-html:not([data-cove-platform='win32']) .terminal-node__terminal .xterm .xterm-rows {
-  -webkit-font-smoothing: antialiased !important;
-  -moz-osx-font-smoothing: grayscale !important;
-  text-rendering: geometricPrecision !important;
-  font-kerning: none !important;
-  shape-rendering: crispEdges;
-}
+@keyframes terminal-node-recovering-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.82);
+  }
 
-html[data-cove-platform='win32'] .terminal-node__terminal .xterm .xterm-rows {
-  text-rendering: geometricPrecision !important;
-  font-kerning: none !important;
-  shape-rendering: crispEdges;
-}
-
-/* Force grayscale antialiasing on all xterm helper elements */
-html:not([data-cove-platform='win32']) .terminal-node__terminal .xterm .xterm-helpers,
-html:not([data-cove-platform='win32']) .terminal-node__terminal .xterm .xterm-helper-textarea,
-html:not([data-cove-platform='win32']) .terminal-node__terminal .xterm .xterm-screen {
-  -webkit-font-smoothing: antialiased !important;
-  -moz-osx-font-smoothing: grayscale !important;
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }

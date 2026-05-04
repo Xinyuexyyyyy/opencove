@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import type { Node } from '@xyflow/react'
 import { useTranslation } from '@app/renderer/i18n'
 import {
+  resolveAgentExecutablePathOverride,
   resolveAgentModel,
   resolveAgentLaunchEnv,
   type AgentSettings,
@@ -11,7 +12,6 @@ import { toFileUri } from '@contexts/filesystem/domain/fileUri'
 import { resolveSpaceWorkingDirectory } from '@contexts/space/application/resolveSpaceWorkingDirectory'
 import type { AgentNodeData, Point, TerminalNodeData, WorkspaceSpaceState } from '../../../types'
 import { clearResumeSessionBinding } from '../../../utils/agentResumeBinding'
-import { resolveDefaultAgentWindowSize } from '../constants'
 import { resolveNodePlacementAnchorFromViewportCenter, toErrorMessage } from '../helpers'
 import type { ContextMenuState, CreateNodeInput, ShowWorkspaceCanvasMessage } from '../types'
 import type { LaunchAgentSessionResult, ListMountsResult } from '@shared/contracts/dto'
@@ -19,6 +19,7 @@ import {
   assignNodeToSpaceAndExpand,
   findContainingSpaceByAnchor,
 } from './useInteractions.spaceAssignment'
+import { resolveDefaultAgentLaunchGeometry } from './agentLaunchGeometry'
 
 interface UseAgentLauncherParams {
   agentSettings: AgentSettings
@@ -80,11 +81,17 @@ export function useWorkspaceCanvasAgentLauncher({
             x: contextMenu.flowX,
             y: contextMenu.flowY,
           }
+          const launchGeometry = resolveDefaultAgentLaunchGeometry({
+            bucket: standardWindowSizeBucket,
+            provider,
+            terminalFontSize: agentSettings.terminalFontSize,
+          })
           const anchor = resolveNodePlacementAnchorFromViewportCenter(
             cursorAnchor,
-            resolveDefaultAgentWindowSize(standardWindowSizeBucket),
+            launchGeometry.frameSize,
           )
           const model = resolveAgentModel(agentSettings, provider)
+          const executablePathOverride = resolveAgentExecutablePathOverride(agentSettings, provider)
           const env = resolveAgentLaunchEnv(agentSettings, provider)
           const anchorSpace = findContainingSpaceByAnchor(spacesRef.current, cursorAnchor)
           const mergedEnv =
@@ -144,13 +151,17 @@ export function useWorkspaceCanvasAgentLauncher({
                   provider,
                   mode: 'new',
                   model,
+                  ...(executablePathOverride ? { executablePathOverride } : {}),
                   ...(Object.keys(mergedEnv).length > 0 ? { env: mergedEnv } : {}),
                   agentFullAccess: agentSettings.agentFullAccess,
+                  cols: launchGeometry.terminalGeometry.cols,
+                  rows: launchGeometry.terminalGeometry.rows,
                 },
               })
 
             launchedSessionId = launched.sessionId
-            launchedProfileId = agentSettings.defaultTerminalProfileId
+            launchedProfileId = launched.profileId
+            launchedRuntimeKind = launched.runtimeKind ?? undefined
             launchedEffectiveModel = launched.effectiveModel
             executionDirectory = launched.executionContext.workingDirectory
           } else {
@@ -161,10 +172,11 @@ export function useWorkspaceCanvasAgentLauncher({
               prompt: '',
               mode: 'new',
               model,
+              ...(executablePathOverride ? { executablePathOverride } : {}),
               ...(Object.keys(mergedEnv).length > 0 ? { env: mergedEnv } : {}),
               agentFullAccess: agentSettings.agentFullAccess,
-              cols: 80,
-              rows: 24,
+              cols: launchGeometry.terminalGeometry.cols,
+              rows: launchGeometry.terminalGeometry.rows,
             })
 
             launchedSessionId = launched.sessionId
@@ -179,6 +191,7 @@ export function useWorkspaceCanvasAgentLauncher({
             sessionId: launchedSessionId,
             profileId: launchedProfileId,
             runtimeKind: launchedRuntimeKind,
+            terminalGeometry: launchGeometry.terminalGeometry,
             title: buildAgentNodeTitle(provider, modelLabel),
             anchor,
             kind: 'agent',

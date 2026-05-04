@@ -44,17 +44,21 @@ The refactor that resolved these issues followed a few principles that generaliz
 
 ## OpenCove-Specific References (This Case)
 
-Key implementation artifacts added/changed by the fix (for future readers):
+Key implementation artifacts added/changed by the fix:
 
-- Main durable scrollback mirror: `src/app/main/ipc/ptyScrollbackMirror.ts`
-- Renderer → Main binding sync: `src/app/renderer/shell/hooks/usePtySessionBindingsSync.ts`
+- Historical main durable scrollback mirror (later removed during worker-host cleanup):
+  `src/app/main/ipc/ptyScrollbackMirror.ts`
+- Current renderer-side UX cache persistence:
+  `src/contexts/workspace/presentation/renderer/utils/persistence/scrollbackSchedule.ts`
+- Current terminal scrollback producer:
+  `src/contexts/workspace/presentation/renderer/components/workspaceCanvas/hooks/useNodesStore.ts`
 - Canvas gesture path and viewport write isolation:
   - `src/contexts/workspace/presentation/renderer/components/workspaceCanvas/hooks/useTrackpadGestures.ts`
   - `src/app/renderer/shell/hooks/useWorkerSyncStateUpdates.ts`
 
 Regression assets:
 
-- Unit: `tests/unit/app/ptyScrollbackMirror.spec.ts`
+- Unit: `tests/unit/contexts/scrollbackSchedule.spec.ts`
 - E2E: `tests/e2e/workspace-canvas.persistence.spec.ts`
 
 ## Why Refactoring Was Required (Not Patch)

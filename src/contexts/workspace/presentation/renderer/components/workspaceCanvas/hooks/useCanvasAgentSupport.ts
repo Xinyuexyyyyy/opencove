@@ -50,19 +50,28 @@ export function useWorkspaceCanvasAgentSupport({
     ReturnType<typeof useWorkspaceCanvasAgentLauncher>,
     'openAgentLauncher' | 'openAgentLauncherForProvider'
   > {
-  const { buildAgentNodeTitle, launchAgentInNode, stopAgentNode } =
-    useWorkspaceCanvasAgentNodeLifecycle({
-      workspaceId,
-      nodesRef,
-      spacesRef,
-      setNodes,
-      bumpAgentLaunchToken,
-      isAgentLaunchTokenCurrent,
-      agentFullAccess: agentSettings.agentFullAccess,
-      defaultTerminalProfileId: agentSettings.defaultTerminalProfileId,
-      agentEnvByProvider: agentSettings.agentEnvByProvider,
-      environmentVariables,
-    })
+  const {
+    buildAgentNodeTitle,
+    launchAgentInNode,
+    reloadAgentNode,
+    listAgentSessionsForNode,
+    switchAgentNodeSession,
+    stopAgentNode,
+  } = useWorkspaceCanvasAgentNodeLifecycle({
+    workspaceId,
+    nodesRef,
+    spacesRef,
+    setNodes,
+    bumpAgentLaunchToken,
+    isAgentLaunchTokenCurrent,
+    agentFullAccess: agentSettings.agentFullAccess,
+    defaultTerminalProfileId: agentSettings.defaultTerminalProfileId,
+    terminalFontSize: agentSettings.terminalFontSize,
+    agentEnvByProvider: agentSettings.agentEnvByProvider,
+    agentExecutablePathOverrideByProvider: agentSettings.agentExecutablePathOverrideByProvider,
+    environmentVariables,
+    onRequestPersistFlush,
+  })
 
   const { openAgentLauncher, openAgentLauncherForProvider } = useWorkspaceCanvasAgentLauncher({
     agentSettings,
@@ -85,6 +94,9 @@ export function useWorkspaceCanvasAgentSupport({
   return {
     buildAgentNodeTitle,
     launchAgentInNode,
+    reloadAgentNode,
+    listAgentSessionsForNode,
+    switchAgentNodeSession,
     stopAgentNode,
     openAgentLauncher,
     openAgentLauncherForProvider,

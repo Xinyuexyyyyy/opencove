@@ -76,6 +76,52 @@ Downloads are available for macOS, Windows, and Linux.
 > xattr -dr com.apple.quarantine /Applications/OpenCove.app
 > ```
 
+### CLI and Server Install
+
+You now have two supported ways to install the `opencove` CLI:
+
+- From the Desktop app: open **Settings → Worker → CLI** and click **Install CLI**.
+- Without Desktop: use a GitHub Release that includes standalone runtime bundles
+  (`opencove-server-*`) plus release-specific installer assets such as
+  `opencove-install-v<tag>.sh` / `opencove-install-v<tag>.ps1`. Stable releases also
+  publish the generic `opencove-install.sh` / `opencove-install.ps1` aliases, which
+  always target the latest stable release.
+
+If `releases/latest/download/opencove-install.sh` returns `404`, the latest stable release
+has not published the standalone installer yet. In that case, use the Desktop installer for
+now or wait for a release that includes those assets.
+
+For the latest stable release, install on macOS / Linux with:
+
+```bash
+curl -fsSL https://github.com/DeadWaveWave/opencove/releases/latest/download/opencove-install.sh | sh
+```
+
+On Windows, use PowerShell:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-RestMethod https://github.com/DeadWaveWave/opencove/releases/latest/download/opencove-install.ps1 | Invoke-Expression"
+```
+
+For a nightly or any specific tagged release, use the versioned installer asset from that
+release page:
+
+```bash
+curl -fsSL https://github.com/DeadWaveWave/opencove/releases/download/v<version>/opencove-install-v<version>.sh | sh
+```
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-RestMethod https://github.com/DeadWaveWave/opencove/releases/download/v<version>/opencove-install-v<version>.ps1 | Invoke-Expression"
+```
+
+For a headless server that hosts the Web UI, start the worker directly after install:
+
+```bash
+opencove worker start --hostname 0.0.0.0 --web-ui-password 'change-me'
+```
+
+This prints the Web UI URL and enables password login for browser access. Keep the password set whenever you expose the Web UI beyond localhost.
+
 ### Building from Source
 
 #### Prerequisites
@@ -97,7 +143,7 @@ pnpm install
 pnpm dev
 ```
 
-> See [RELEASING.md](docs/RELEASING.md) for more packager and build documentation.
+> See [RELEASING.md](docs/runtime/RELEASING.md) for more packager and build documentation.
 
 ### Web UI (Experimental)
 
@@ -108,8 +154,8 @@ OpenCove includes an **experimental Worker-hosted Web UI** so you can open the c
 - Dev note: LAN access uses the built `out/renderer` bundle (no HMR). Run `pnpm build` after UI changes.
 
 More details:
-- `docs/CONTROL_SURFACE.md`
-- `docs/WEB_UI_TROUBLESHOOTING.md`
+- `docs/architecture/CONTROL_SURFACE.md`
+- `docs/runtime/WEB_UI_TROUBLESHOOTING.md`
 
 ## 🏗️ Technical Architecture
 

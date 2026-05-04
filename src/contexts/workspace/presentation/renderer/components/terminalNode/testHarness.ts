@@ -1,4 +1,5 @@
 import type { Terminal } from '@xterm/xterm'
+import type { FitAddon } from '@xterm/addon-fit'
 import { peekCachedTerminalScreenState } from './screenStateCache'
 
 type TerminalSelectionHandle = Pick<
@@ -30,7 +31,12 @@ type TerminalRendererIntrospection = {
       dpr?: unknown
     }
   }
-  options?: { fontSize?: unknown; fontFamily?: unknown }
+  options?: {
+    fontSize?: unknown
+    fontFamily?: unknown
+    lineHeight?: unknown
+    letterSpacing?: unknown
+  }
   __opencoveDprDebug?: {
     lastInputZoom?: unknown
     lastDecision?: unknown
@@ -45,14 +51,23 @@ type TerminalRendererIntrospection = {
 
 type TerminalSelectionTestApi = {
   clearSelection: (nodeId: string) => boolean
+  simulateDetachedRendererOnce: (nodeId: string) => boolean
   getCellCenter: (nodeId: string, col: number, row: number) => { x: number; y: number } | null
-  getFontOptions: (nodeId: string) => { fontSize: number | null; fontFamily: string | null } | null
+  getFontOptions: (nodeId: string) => {
+    fontSize: number | null
+    fontFamily: string | null
+    lineHeight: number | null
+    letterSpacing: number | null
+  } | null
+  getProposedGeometry: (nodeId: string) => { cols: number; rows: number } | null
   getRenderMetrics: (nodeId: string) => {
     effectiveDpr: number | null
     deviceCanvasWidth: number | null
     deviceCanvasHeight: number | null
     cssCanvasWidth: number | null
     cssCanvasHeight: number | null
+    cssCellWidth: number | null
+    cssCellHeight: number | null
     baseY: number | null
     viewportY: number | null
     isUserScrolling: boolean | null
@@ -63,13 +78,17 @@ type TerminalSelectionTestApi = {
     instanceId: number | null
   } | null
   getSize: (nodeId: string) => { cols: number; rows: number } | null
+  getRegisteredNodeIds: () => string[]
+  getRuntimeSessionId: (nodeId: string) => string | null
   getViewportY: (nodeId: string) => number | null
+  setDisplayOptions: (
+    nodeId: string,
+    options: { fontSize?: number; lineHeight?: number; letterSpacing?: number },
+  ) => boolean
   getCachedScreenStateSummary: (nodeId: string) => {
     sessionId: string
     serializedLength: number
-    rawSnapshotLength: number
     serializedHasFrameToken: boolean
-    rawSnapshotHasFrameToken: boolean
   } | null
   emitBinaryInput: (nodeId: string, data: string) => boolean
   getSelection: (nodeId: string) => string | null
@@ -85,7 +104,13 @@ declare global {
 }
 
 const terminalHandles = new Map<string, TerminalSelectionHandle>()
-
+const terminalFitAddons = new Map<string, FitAddon>()
+const terminalBinaryInputEmitters = new Map<string, (data: string) => boolean>()
+const terminalRuntimeSessionIds = new Map<string, string>()
+const terminalDetachedRendererRestorers = new Map<string, () => void>()
+function normalizeFiniteOption(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
 function getTerminalSelectionTestApi(): TerminalSelectionTestApi | undefined {
   if (typeof window === 'undefined') {
     return undefined
@@ -100,6 +125,45 @@ function getTerminalSelectionTestApi(): TerminalSelectionTestApi | undefined {
         }
 
         terminal.clearSelection()
+        return true
+      },
+      simulateDetachedRendererOnce: nodeId => {
+        const terminal = terminalHandles.get(nodeId) as unknown as {
+          _core?: {
+            _renderService?: Record<string, unknown>
+          }
+        }
+        const renderService = terminal?._core?._renderService
+        if (!renderService) {
+          return false
+        }
+
+        terminalDetachedRendererRestorers.get(nodeId)?.()
+
+        const hadOwnDescriptor = Object.prototype.hasOwnProperty.call(renderService, 'dimensions')
+        const originalDescriptor =
+          Object.getOwnPropertyDescriptor(renderService, 'dimensions') ?? null
+        const restore = (): void => {
+          if (hadOwnDescriptor && originalDescriptor) {
+            Object.defineProperty(renderService, 'dimensions', originalDescriptor)
+          } else {
+            Reflect.deleteProperty(renderService, 'dimensions')
+          }
+
+          if (terminalDetachedRendererRestorers.get(nodeId) === restore) {
+            terminalDetachedRendererRestorers.delete(nodeId)
+          }
+        }
+
+        Object.defineProperty(renderService, 'dimensions', {
+          configurable: true,
+          get() {
+            restore()
+            throw new TypeError("Cannot read properties of undefined (reading 'dimensions')")
+          },
+        })
+
+        terminalDetachedRendererRestorers.set(nodeId, restore)
         return true
       },
       getCellCenter: (nodeId, col, row) => {
@@ -167,11 +231,22 @@ function getTerminalSelectionTestApi(): TerminalSelectionTestApi | undefined {
         }
 
         return {
-          fontSize:
-            typeof options.fontSize === 'number' && Number.isFinite(options.fontSize)
-              ? options.fontSize
-              : null,
+          fontSize: normalizeFiniteOption(options.fontSize),
           fontFamily: typeof options.fontFamily === 'string' ? options.fontFamily : null,
+          lineHeight: normalizeFiniteOption(options.lineHeight),
+          letterSpacing: normalizeFiniteOption(options.letterSpacing),
+        }
+      },
+      getProposedGeometry: nodeId => {
+        const fitAddon = terminalFitAddons.get(nodeId)
+        const proposed = fitAddon?.proposeDimensions()
+        if (!proposed) {
+          return null
+        }
+
+        return {
+          cols: proposed.cols,
+          rows: proposed.rows,
         }
       },
       getRenderMetrics: nodeId => {
@@ -184,6 +259,7 @@ function getTerminalSelectionTestApi(): TerminalSelectionTestApi | undefined {
         const effectiveDpr = terminal?._core?._coreBrowserService?.dpr
         const deviceCanvas = dimensions.device?.canvas
         const cssCanvas = dimensions.css?.canvas
+        const cssCell = dimensions.css?.cell
         const baseY = (terminal as unknown as { buffer?: { active?: { baseY?: unknown } } })?.buffer
           ?.active?.baseY
         const viewportY = (terminal as unknown as { buffer?: { active?: { viewportY?: unknown } } })
@@ -211,6 +287,14 @@ function getTerminalSelectionTestApi(): TerminalSelectionTestApi | undefined {
           cssCanvasHeight:
             typeof cssCanvas?.height === 'number' && Number.isFinite(cssCanvas.height)
               ? cssCanvas.height
+              : null,
+          cssCellWidth:
+            typeof cssCell?.width === 'number' && Number.isFinite(cssCell.width)
+              ? cssCell.width
+              : null,
+          cssCellHeight:
+            typeof cssCell?.height === 'number' && Number.isFinite(cssCell.height)
+              ? cssCell.height
               : null,
           baseY: typeof baseY === 'number' && Number.isFinite(baseY) ? baseY : null,
           viewportY: typeof viewportY === 'number' && Number.isFinite(viewportY) ? viewportY : null,
@@ -243,12 +327,32 @@ function getTerminalSelectionTestApi(): TerminalSelectionTestApi | undefined {
           rows: terminal.rows,
         }
       },
+      getRegisteredNodeIds: () => [...terminalHandles.keys()],
+      getRuntimeSessionId: nodeId => terminalRuntimeSessionIds.get(nodeId) ?? null,
       getViewportY: nodeId => {
         const terminal = terminalHandles.get(nodeId) as unknown as {
           buffer?: { active?: { viewportY?: unknown } }
         }
         const viewportY = terminal?.buffer?.active?.viewportY
         return typeof viewportY === 'number' && Number.isFinite(viewportY) ? viewportY : null
+      },
+      setDisplayOptions: (nodeId, options) => {
+        const terminal = terminalHandles.get(nodeId) as unknown as TerminalRendererIntrospection
+        if (!terminal?.options) {
+          return false
+        }
+
+        if (typeof options.fontSize === 'number' && Number.isFinite(options.fontSize)) {
+          terminal.options.fontSize = options.fontSize
+        }
+        if (typeof options.lineHeight === 'number' && Number.isFinite(options.lineHeight)) {
+          terminal.options.lineHeight = options.lineHeight
+        }
+        if (typeof options.letterSpacing === 'number' && Number.isFinite(options.letterSpacing)) {
+          terminal.options.letterSpacing = options.letterSpacing
+        }
+
+        return true
       },
       getCachedScreenStateSummary: nodeId => {
         const cached = peekCachedTerminalScreenState(nodeId)
@@ -259,13 +363,17 @@ function getTerminalSelectionTestApi(): TerminalSelectionTestApi | undefined {
         return {
           sessionId: cached.sessionId,
           serializedLength: cached.serialized.length,
-          rawSnapshotLength: cached.rawSnapshot.length,
           serializedHasFrameToken: cached.serialized.includes('FRAME_29999_TOKEN'),
-          rawSnapshotHasFrameToken: cached.rawSnapshot.includes('FRAME_29999_TOKEN'),
         }
       },
       emitBinaryInput: (nodeId, data) => {
+        const testEmitter = terminalBinaryInputEmitters.get(nodeId)
+        if (testEmitter) {
+          return testEmitter(data)
+        }
+
         const terminal = terminalHandles.get(nodeId) as unknown as {
+          element?: HTMLElement | null
           _core?: { coreService?: { triggerBinaryEvent?: (payload: string) => void } }
         }
         const coreService = terminal?._core?.coreService
@@ -273,6 +381,13 @@ function getTerminalSelectionTestApi(): TerminalSelectionTestApi | undefined {
           return false
         }
 
+        const interactionTarget = terminal.element?.parentElement ?? terminal.element ?? null
+        interactionTarget?.dispatchEvent(
+          new MouseEvent('mousedown', {
+            bubbles: true,
+            cancelable: true,
+          }),
+        )
         coreService.triggerBinaryEvent(data)
         return true
       },
@@ -305,6 +420,7 @@ function getTerminalSelectionTestApi(): TerminalSelectionTestApi | undefined {
 export function registerTerminalSelectionTestHandle(
   nodeId: string,
   terminal: TerminalSelectionHandle,
+  fitAddon?: FitAddon,
 ): () => void {
   if (typeof window === 'undefined') {
     return () => undefined
@@ -312,8 +428,73 @@ export function registerTerminalSelectionTestHandle(
 
   getTerminalSelectionTestApi()
   terminalHandles.set(nodeId, terminal)
+  if (fitAddon) {
+    terminalFitAddons.set(nodeId, fitAddon)
+  }
 
   return () => {
+    terminalDetachedRendererRestorers.get(nodeId)?.()
     terminalHandles.delete(nodeId)
+    terminalFitAddons.delete(nodeId)
+  }
+}
+
+export function registerTerminalBinaryInputTestHandle(
+  nodeId: string,
+  emitBinaryInput: (data: string) => boolean,
+): () => void {
+  if (typeof window === 'undefined') {
+    return () => undefined
+  }
+
+  getTerminalSelectionTestApi()
+  terminalBinaryInputEmitters.set(nodeId, emitBinaryInput)
+
+  return () => {
+    if (terminalBinaryInputEmitters.get(nodeId) === emitBinaryInput) {
+      terminalBinaryInputEmitters.delete(nodeId)
+    }
+  }
+}
+
+export function registerTerminalRuntimeSessionTestHandle(
+  nodeId: string,
+  sessionId: string,
+): () => void {
+  if (typeof window === 'undefined') {
+    return () => undefined
+  }
+
+  getTerminalSelectionTestApi()
+  terminalRuntimeSessionIds.set(nodeId, sessionId)
+
+  return () => {
+    if (terminalRuntimeSessionIds.get(nodeId) === sessionId) {
+      terminalRuntimeSessionIds.delete(nodeId)
+    }
+  }
+}
+
+export function registerTerminalRuntimeTestHandles({
+  enabled,
+  nodeId,
+  sessionId,
+  emitBinaryInput,
+}: {
+  enabled: boolean
+  nodeId: string
+  sessionId: string
+  emitBinaryInput: (data: string) => boolean
+}): () => void {
+  if (!enabled) {
+    return () => undefined
+  }
+
+  const disposeBinaryInput = registerTerminalBinaryInputTestHandle(nodeId, emitBinaryInput)
+  const disposeRuntimeSession = registerTerminalRuntimeSessionTestHandle(nodeId, sessionId)
+
+  return () => {
+    disposeBinaryInput()
+    disposeRuntimeSession()
   }
 }

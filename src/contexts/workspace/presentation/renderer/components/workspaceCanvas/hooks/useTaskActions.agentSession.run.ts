@@ -1,5 +1,9 @@
 import { toFileUri } from '@contexts/filesystem/domain/fileUri'
-import { resolveAgentLaunchEnv, resolveAgentModel } from '@contexts/settings/domain/agentSettings'
+import {
+  resolveAgentExecutablePathOverride,
+  resolveAgentLaunchEnv,
+  resolveAgentModel,
+} from '@contexts/settings/domain/agentSettings'
 import { clearResumeSessionBinding } from '../../../utils/agentResumeBinding'
 import { toErrorMessage } from '../helpers'
 import type {
@@ -16,16 +20,19 @@ import {
   setTaskLastError,
   type TaskActionContext,
 } from './useTaskActions.agentSession.shared'
+import { resolveDefaultAgentLaunchGeometry } from './agentLaunchGeometry'
 
 function reuseLinkedAgentForTask({
   taskNodeId,
   linkedAgentNodeId,
+  taskTitle,
   requirement,
   taskDirectory,
   context,
 }: {
   taskNodeId: string
   linkedAgentNodeId: string
+  taskTitle: string
   requirement: string
   taskDirectory: string
   context: TaskActionContext
@@ -55,6 +62,10 @@ function reuseLinkedAgentForTask({
           ...node,
           data: {
             ...node.data,
+            title:
+              node.data.titlePinnedByUser === true
+                ? node.data.title
+                : context.buildAgentNodeTitle(node.data.agent.provider, taskTitle),
             agent: {
               ...node.data.agent,
               prompt: requirement,
@@ -230,6 +241,7 @@ export async function runTaskAgentAction(
     const reused = reuseLinkedAgentForTask({
       taskNodeId,
       linkedAgentNodeId,
+      taskTitle: taskNode.data.title,
       requirement,
       taskDirectory,
       context,
@@ -249,7 +261,13 @@ export async function runTaskAgentAction(
 
   const provider = context.agentSettings.defaultProvider
   const model = resolveAgentModel(context.agentSettings, provider)
+  const executablePathOverride = resolveAgentExecutablePathOverride(context.agentSettings, provider)
   const env = resolveAgentLaunchEnv(context.agentSettings, provider)
+  const launchGeometry = resolveDefaultAgentLaunchGeometry({
+    bucket: context.agentSettings.standardWindowSizeBucket,
+    provider,
+    terminalFontSize: context.agentSettings.terminalFontSize,
+  })
   const mergedEnv =
     context.environmentVariables && Object.keys(context.environmentVariables).length > 0
       ? { ...env, ...context.environmentVariables }
@@ -277,8 +295,11 @@ export async function runTaskAgentAction(
             provider,
             mode: 'new',
             model,
+            ...(executablePathOverride ? { executablePathOverride } : {}),
             ...(Object.keys(mergedEnv).length > 0 ? { env: mergedEnv } : {}),
             agentFullAccess: context.agentSettings.agentFullAccess,
+            cols: launchGeometry.terminalGeometry.cols,
+            rows: launchGeometry.terminalGeometry.rows,
           },
         })
       }
@@ -302,7 +323,8 @@ export async function runTaskAgentAction(
       }
 
       launchedSessionId = launched.sessionId
-      launchedProfileId = context.agentSettings.defaultTerminalProfileId
+      launchedProfileId = launched.profileId
+      launchedRuntimeKind = launched.runtimeKind ?? undefined
       launchedEffectiveModel = launched.effectiveModel
       agentDirectory = launched.executionContext.workingDirectory
     } else {
@@ -313,10 +335,11 @@ export async function runTaskAgentAction(
         prompt: requirement,
         mode: 'new',
         model,
+        ...(executablePathOverride ? { executablePathOverride } : {}),
         ...(Object.keys(mergedEnv).length > 0 ? { env: mergedEnv } : {}),
         agentFullAccess: context.agentSettings.agentFullAccess,
-        cols: 80,
-        rows: 24,
+        cols: launchGeometry.terminalGeometry.cols,
+        rows: launchGeometry.terminalGeometry.rows,
       })
 
       launchedSessionId = launched.sessionId
@@ -329,7 +352,8 @@ export async function runTaskAgentAction(
       sessionId: launchedSessionId,
       profileId: launchedProfileId,
       runtimeKind: launchedRuntimeKind,
-      title: context.buildAgentNodeTitle(provider, launchedEffectiveModel),
+      terminalGeometry: launchGeometry.terminalGeometry,
+      title: context.buildAgentNodeTitle(provider, taskNode.data.title),
       anchor: createTaskAgentAnchor(taskNode),
       kind: 'agent',
       placement: {

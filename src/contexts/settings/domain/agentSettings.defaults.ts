@@ -1,6 +1,7 @@
 import { AGENT_PROVIDERS } from './agentSettings.providers'
 import type { AgentSettings } from './agentSettings'
 import { DEFAULT_AGENT_ENV_BY_PROVIDER } from './agentEnv'
+import { DEFAULT_AGENT_EXECUTABLE_PATH_OVERRIDE_BY_PROVIDER } from './agentSettings.executables'
 import { DEFAULT_UI_LANGUAGE } from './uiSettings'
 import { DEFAULT_WEBSITE_WINDOW_POLICY } from './websiteWindowSettings'
 
@@ -13,6 +14,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   agentProviderOrder: [...AGENT_PROVIDERS],
   agentFullAccess: true,
   defaultTerminalProfileId: null,
+  agentExecutablePathOverrideByProvider: DEFAULT_AGENT_EXECUTABLE_PATH_OVERRIDE_BY_PROVIDER,
   customModelEnabledByProvider: {
     'claude-code': false,
     codex: false,
@@ -42,6 +44,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   focusNodeOnClick: true,
   focusNodeTargetZoom: 1,
   focusNodeUseVisibleCanvasCenter: true,
+  systemNotificationsEnabled: true,
   standbyBannerEnabled: true,
   standbyBannerShowTask: true,
   standbyBannerShowSpace: true,
@@ -59,6 +62,9 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   defaultTerminalWindowScalePercent: 80,
   terminalFontSize: 13,
   terminalFontFamily: null,
+  terminalDisplayAutoReferenceEnabled: true,
+  terminalDisplayCalibrationCompensationEnabled: true,
+  terminalDisplayReference: null,
   uiFontSize: 18,
   githubPullRequestsEnabled: true,
   updatePolicy: 'prompt',

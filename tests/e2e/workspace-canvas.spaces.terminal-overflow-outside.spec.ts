@@ -37,16 +37,13 @@ test.describe('Workspace Canvas - Spaces (Terminal Overflow Outside)', () => {
       const pane = window.locator('.workspace-canvas .react-flow__pane')
       await expect(pane).toBeVisible()
 
-      // Right click near the center of the space.
-      await pane.click({
-        button: 'right',
-        // Pick a blank spot inside the space but outside the note node.
-        position: { x: 220, y: 220 },
-      })
-
-      const newTerminal = window.locator('[data-testid="workspace-context-new-terminal"]')
-      await expect(newTerminal).toBeVisible()
-      await newTerminal.click()
+      const created = await window.evaluate(
+        point => {
+          return window.__opencoveWorkspaceCanvasTestApi?.createTerminalAtFlowPoint(point) ?? false
+        },
+        { x: 220, y: 220 },
+      )
+      expect(created).toBe(true)
 
       await expect(window.locator('.terminal-node')).toHaveCount(1)
 

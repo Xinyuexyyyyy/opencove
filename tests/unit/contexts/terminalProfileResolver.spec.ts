@@ -119,6 +119,30 @@ describe('TerminalProfileResolver', () => {
     })
   })
 
+  it('keeps a built-in PowerShell profile when Windows command discovery times out', async () => {
+    const resolver = new TerminalProfileResolver({
+      platform: 'win32',
+      commandDiscoveryTimeoutMs: 10,
+      locateWindowsCommands: async () => await new Promise<string[]>(() => undefined),
+      listWslDistros: async () => [],
+    })
+
+    const result = await Promise.race<
+      Awaited<ReturnType<typeof resolver.listProfiles>> | 'timed-out'
+    >([
+      resolver.listProfiles(),
+      new Promise(resolve => {
+        setTimeout(() => resolve('timed-out'), 100)
+      }),
+    ])
+
+    expect(result).not.toBe('timed-out')
+    expect(result).toEqual({
+      profiles: [{ id: 'powershell', label: 'PowerShell', runtimeKind: 'windows' }],
+      defaultProfileId: 'powershell',
+    })
+  })
+
   it('resolves WSL sessions with linux cwd translation and Windows host cwd fallback', async () => {
     const resolver = new TerminalProfileResolver({
       platform: 'win32',
@@ -261,6 +285,34 @@ describe('TerminalProfileResolver', () => {
       cwd: 'C:\\repo',
       profileId: 'wsl:Ubuntu',
       runtimeKind: 'wsl',
+    })
+  })
+
+  it('can bypass Windows profiles for host-resolved agent commands', async () => {
+    const resolver = new TerminalProfileResolver({
+      platform: 'win32',
+      env: () => ({ PATH: 'C:\\Windows\\System32' }),
+      homeDir: () => 'C:\\Users\\tester',
+      locateWindowsCommands: async () => [
+        'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+      ],
+      listWslDistros: async () => ['Ubuntu'],
+    })
+
+    const result = await resolver.resolveCommandSpawn({
+      cwd: 'C:\\repo',
+      profileId: 'wsl:Ubuntu',
+      command: 'cmd.exe',
+      args: ['/d', '/c', 'C:\\Users\\tester\\AppData\\Roaming\\npm\\codex.cmd'],
+      useProfile: false,
+    })
+
+    expect(result).toMatchObject({
+      command: 'cmd.exe',
+      args: ['/d', '/c', 'C:\\Users\\tester\\AppData\\Roaming\\npm\\codex.cmd'],
+      cwd: 'C:\\repo',
+      profileId: null,
+      runtimeKind: 'windows',
     })
   })
 

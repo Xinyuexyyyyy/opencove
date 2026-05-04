@@ -1,3 +1,7 @@
+import { zhCNTerminalDisplayCalibration } from './zh-CN.terminalDisplayCalibration'
+import { zhCNSettingsPanelEndpoints } from './zh-CN.settingsPanel.endpoints'
+import { zhCNWorkspaceCanvasNavigationShortcutCommands } from './zh-CN.settingsPanel.shortcuts.workspaceCanvasNavigation'
+
 export const zhCNSettingsPanel = {
   title: '设置',
   search: {
@@ -42,6 +46,7 @@ export const zhCNSettingsPanel = {
     terminalFontFamilySearch: '搜索字体…',
     terminalFontFamilyShowAll: '显示全部字体',
     terminalFontFamilyNoResults: '未找到字体',
+    terminalDisplayCalibration: zhCNTerminalDisplayCalibration,
     updates: {
       title: '更新',
       help: '跟踪 GitHub Releases，并选择 OpenCove 如何应用应用更新。',
@@ -97,6 +102,21 @@ export const zhCNSettingsPanel = {
     keyPlaceholder: 'KEY',
     valuePlaceholder: 'value',
   },
+  agentExecutable: {
+    title: 'Agent 可执行文件解析',
+    help: '查看 OpenCove 如何解析每个本地 Agent CLI；当自动探测不准确时，可为某个提供方指定显式可执行路径。',
+    overrideLabel: '可执行文件覆盖路径',
+    overrideHelp: '可选的本地路径覆盖。一旦设置，OpenCove 会要求该路径必须可成功解析。',
+    overridePlaceholder: '/absolute/path/to/executable',
+    pathLabel: '当前解析路径',
+    notResolved: '未解析',
+    commandLabel: '命令：{{command}}',
+    status: {
+      available: '可用',
+      unavailable: '不可用',
+      misconfigured: '配置错误',
+    },
+  },
   quickMenu: {
     title: '快捷指令与短语',
     customize: '自定义…',
@@ -141,9 +161,13 @@ export const zhCNSettingsPanel = {
   },
   notifications: {
     title: '通知',
+    systemNotifications: {
+      enabledLabel: '系统通知',
+      enabledHelp: '当 Agent 从工作状态变为待命时，显示原生系统通知。',
+    },
     agentStandbyBanner: {
-      enabledLabel: 'Agent 完成提醒',
-      enabledHelp: '当 Agent 从工作状态变为待命时，在右上角显示提醒横幅。',
+      enabledLabel: '右上角横幅',
+      enabledHelp: '当 Agent 从工作状态变为待命时，显示应用内右上角横幅。',
       contextTitle: '横幅信息',
       contextHelp: '控制右上角提醒横幅中显示的上下文信息。',
       showTask: '显示任务',
@@ -268,6 +292,18 @@ export const zhCNSettingsPanel = {
     record: '录制',
     recording: '请按键…',
     clear: '清除',
+    spatialNavigation: {
+      title: '空间方位导航',
+      help: 'beam-first 规则，在节点与 Space 间进行方位导航。',
+      customize: '自定义…',
+      hide: '收起',
+      node: {
+        title: '节点',
+      },
+      space: {
+        title: 'Space',
+      },
+    },
     groups: {
       app: {
         title: '应用',
@@ -327,6 +363,7 @@ export const zhCNSettingsPanel = {
         title: '上一个空闲 Space',
         help: '切换到上一个没有 working agent 的 Space。',
       },
+      ...zhCNWorkspaceCanvasNavigationShortcutCommands,
     },
   },
   tasks: {
@@ -391,6 +428,7 @@ export const zhCNSettingsPanel = {
       statusLabel: '状态',
       status: {
         installed: '已安装（{{path}}）',
+        needsRepair: '已安装，但命令入口需要修复（{{path}}）',
         notInstalled: '未安装',
       },
       actionsLabel: '操作',
@@ -416,32 +454,7 @@ export const zhCNSettingsPanel = {
       copyToken: '复制',
     },
   },
-  endpoints: {
-    title: 'Endpoints',
-    list: {
-      title: '已注册端点',
-      help: '当前 Worker 负责将操作路由到各个 endpoint。',
-      countLabel: '数量',
-      localSubtitle: '本机',
-      localRemoveHelp: '本机 endpoint 不可移除。',
-      lastPing: '最近一次 ping：pid {{pid}} · {{now}}',
-    },
-    actions: {
-      add: '添加端点',
-      ping: 'Ping',
-      pinging: 'Ping 中…',
-    },
-    register: {
-      title: '注册端点',
-      help: '通过 hostname、port、token 注册一个远程 worker endpoint。Token 不会被写入 renderer state。',
-      displayNameLabel: '显示名称（可选）',
-      hostnameLabel: '主机',
-      portLabel: '端口',
-      tokenLabel: 'Token',
-      tokenHelp: 'Token 仅提交一次，注册后会自动清空。',
-      tokenRequired: 'Token 不能为空。',
-    },
-  },
+  endpoints: zhCNSettingsPanelEndpoints,
   workspace: {
     title: '工作区 Worktree',
     selectProjectFirst: '请先选择一个项目',

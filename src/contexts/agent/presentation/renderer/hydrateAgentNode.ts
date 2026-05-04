@@ -10,7 +10,11 @@ import {
   isResumeSessionBindingVerified,
 } from '@contexts/agent/domain/agentResumeBinding'
 import { resolveInitialAgentRuntimeStatus } from '@contexts/agent/domain/agentRuntimeStatus'
-import { resolveAgentLaunchEnv, type AgentSettings } from '@contexts/settings/domain/agentSettings'
+import {
+  resolveAgentExecutablePathOverride,
+  resolveAgentLaunchEnv,
+  type AgentSettings,
+} from '@contexts/settings/domain/agentSettings'
 
 interface HydrateAgentNodeInput {
   node: Node<TerminalNodeData>
@@ -118,9 +122,10 @@ export async function hydrateAgentNode({
     node.data.status === 'running' ||
     node.data.status === 'standby' ||
     node.data.status === 'restoring'
+  const hasRecoverableAgentStatus = node.data.status !== 'stopped'
 
   const resolvedPendingResumeSessionId =
-    hasActiveAgentStatus && !isResumeSessionBindingVerified(node.data.agent)
+    hasRecoverableAgentStatus && !isResumeSessionBindingVerified(node.data.agent)
       ? await resolvePendingResumeSessionId(node)
       : null
 
@@ -138,14 +143,18 @@ export async function hydrateAgentNode({
         }
 
   const shouldAutoResumeAgent =
-    hasActiveAgentStatus && isResumeSessionBindingVerified(sanitizedAgent)
+    hasRecoverableAgentStatus && isResumeSessionBindingVerified(sanitizedAgent)
   const shouldRelaunchBlankAgent =
-    hasActiveAgentStatus &&
+    hasRecoverableAgentStatus &&
     !isResumeSessionBindingVerified(sanitizedAgent) &&
     sanitizedAgent.prompt.trim().length === 0
   const terminalProfileId = node.data.profileId ?? agentSettings.defaultTerminalProfileId ?? null
   const agentFullAccess = agentSettings.agentFullAccess
   const env = resolveAgentLaunchEnv(agentSettings, sanitizedAgent.provider)
+  const executablePathOverride = resolveAgentExecutablePathOverride(
+    agentSettings,
+    sanitizedAgent.provider,
+  )
 
   if (shouldAutoResumeAgent) {
     try {
@@ -157,6 +166,7 @@ export async function hydrateAgentNode({
         mode: 'resume',
         model: sanitizedAgent.model,
         resumeSessionId: sanitizedAgent.resumeSessionId,
+        ...(executablePathOverride ? { executablePathOverride } : {}),
         ...(Object.keys(env).length > 0 ? { env } : {}),
         agentFullAccess,
         cols: 80,
@@ -184,7 +194,7 @@ export async function hydrateAgentNode({
             ...sanitizedAgent,
             effectiveModel: restoredAgent.effectiveModel,
             launchMode: restoredAgent.launchMode,
-            resumeSessionId: restoredAgent.resumeSessionId ?? sanitizedAgent.resumeSessionId,
+            resumeSessionId: sanitizedAgent.resumeSessionId,
             resumeSessionIdVerified: true,
           },
         },
@@ -209,6 +219,7 @@ export async function hydrateAgentNode({
         prompt: sanitizedAgent.prompt,
         mode: 'new',
         model: sanitizedAgent.model,
+        ...(executablePathOverride ? { executablePathOverride } : {}),
         ...(Object.keys(env).length > 0 ? { env } : {}),
         agentFullAccess,
         cols: 80,

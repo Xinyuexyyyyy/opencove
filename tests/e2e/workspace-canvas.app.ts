@@ -1,8 +1,8 @@
 import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { once } from 'node:events'
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, rm } from 'node:fs/promises'
 import path from 'path'
-import { resolveE2ETmpDir } from './workspace-canvas.testUtils'
+import { createTestUserDataDir } from './workspace-canvas.testUtils'
 
 const electronAppPath = path.resolve(__dirname, '../../')
 const testAgentStubScriptPath = path.resolve(__dirname, '../../scripts/test-agent-session-stub.mjs')
@@ -155,14 +155,6 @@ async function cleanupUserDataDirWithRetry(userDataDir: string, attempt = 1): Pr
   }
 }
 
-export async function createTestUserDataDir(): Promise<string> {
-  const baseTmpDir = resolveE2ETmpDir()
-
-  const parentDir = path.join(baseTmpDir, 'opencove-e2e')
-  await mkdir(parentDir, { recursive: true })
-  return await mkdtemp(path.join(parentDir, 'cove-e2e-user-data-'))
-}
-
 function isProcessAlive(pid: number): boolean {
   try {
     process.kill(pid, 0)
@@ -287,6 +279,7 @@ async function launchAppInMode(
         OPENCOVE_TEST_WORKSPACE: testWorkspacePath,
         OPENCOVE_TEST_USER_DATA_DIR: userDataDir,
         OPENCOVE_TEST_AGENT_STUB_SCRIPT: testAgentStubScriptPath,
+        OPENCOVE_TEST_NODE_EXECUTABLE: process.execPath,
         OPENCOVE_E2E_WINDOW_MODE: launchMode,
         ...(shouldDisableElectronSandboxForLinuxCi() ? { ELECTRON_DISABLE_SANDBOX: '1' } : {}),
         ...envOverrides,

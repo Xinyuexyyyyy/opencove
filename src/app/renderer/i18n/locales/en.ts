@@ -1,4 +1,5 @@
 import { enMessages } from './en.messages'
+import { enCommonRemoteEndpoints } from './en.commonRemoteEndpoints'
 import { enShell } from './en.shell'
 import { enSpaceExplorer } from './en.spaceExplorer'
 import { enSettingsPanel } from './en.settingsPanel'
@@ -33,6 +34,7 @@ export const en = {
     percentUnit: '%',
     pixelUnit: 'px',
     minuteUnit: 'min',
+    remoteEndpoints: enCommonRemoteEndpoints,
   },
   taskPriorities: {
     low: 'Low',
@@ -54,6 +56,8 @@ export const en = {
     noProjectYet: 'No project yet.',
     settings: 'Settings',
     fallbackAgentLabel: 'Agent',
+    expandProjectAgents: 'Expand project agents',
+    collapseProjectAgents: 'Collapse project agents',
     status: {
       working: 'Working',
       standby: 'Standby',
@@ -84,7 +88,7 @@ export const en = {
     sidebar: 'Sidebar',
     minimap: 'Minimap',
     theme: 'Theme',
-    agentStandbyBanner: 'Agent standby banner',
+    agentStandbyBanner: 'Top-right banner',
     on: 'On',
     off: 'Off',
   },
@@ -185,6 +189,10 @@ export const en = {
     description: 'Each project has its own infinite canvas and terminals.',
     action: 'Add Project',
   },
+  appStartupState: {
+    title: 'Opening your workspace',
+    description: 'Restoring projects, spaces, and terminals…',
+  },
   appMessage: {
     info: 'Info',
     warning: 'Warning',
@@ -263,6 +271,11 @@ export const en = {
   noteNode: {
     title: 'note',
     deleteNote: 'Delete note',
+    saveMarkdown: 'Save as Markdown',
+    saveMarkdownPrompt: 'Markdown file name',
+    defaultFileName: 'note.md',
+    invalidFileName: 'Enter a valid file name.',
+    savedMarkdown: 'Saved to {{path}}',
     resizeWidth: 'Resize note width',
     resizeHeight: 'Resize note height',
   },
@@ -275,11 +288,15 @@ export const en = {
     retry: 'Retry',
     filesystemUnavailable: 'Filesystem is unavailable.',
     notAFile: 'This is not a file.',
+    binaryReadUnavailable: 'This environment cannot load audio or video previews.',
     binaryTitle: 'Binary file',
     binaryMessage:
       'This file appears to be binary or uses an unsupported encoding, so it cannot be opened as text.',
     tooLargeTitle: 'File too large',
     tooLargeMessage: 'This file is too large to open in the canvas editor.',
+    mediaUnsupportedTitle: 'Media playback unavailable',
+    mediaUnsupportedMessage:
+      'This audio or video file cannot be played here. OpenCove currently previews MP3, WAV/WAVE, OGG/OGA, MP4, and WebM when the runtime supports them.',
   },
   imageNode: {
     title: 'image',
@@ -291,6 +308,7 @@ export const en = {
   terminalNode: {
     resizeWidth: 'Resize terminal width',
     resizeHeight: 'Resize terminal height',
+    recoveringAgentSession: 'Recovering live Agent session…',
   },
   terminalFind: {
     placeholder: 'Find…',
@@ -306,6 +324,27 @@ export const en = {
       'Bound directory: {{executionDirectory}}\nCurrent directory: {{expectedDirectory}}',
     copyLastMessage: 'Copy last agent message',
     copyingLastMessage: 'Copying last agent message',
+    reloadSession: 'Reload session',
+    reloadingSession: 'Reloading session',
+    sessionList: 'Session list',
+    loadingSessions: 'Loading sessions',
+    noSessions: 'No sessions found for this directory.',
+    sessionLoadFailed: 'Failed to load sessions.',
+    currentSession: 'Current',
+    sessionUpdatedAt: 'Updated {{timestamp}}',
+    sessionSwitchDialog: {
+      title: 'Switch session?',
+      description: 'This will restart the current agent window into the selected session.',
+      targetSession: 'Target session',
+      targetSessionId: 'Session ID',
+      targetDirectory: 'Target directory',
+      currentDirectory: 'Current directory',
+      mismatch:
+        'The selected session is bound to a different directory. Continue only if that is intentional.',
+      aligned: 'The selected session matches the current directory.',
+      switch: 'Switch session',
+      switching: 'Switching...',
+    },
   },
   nodeDeleteDialog: {
     deleteNodes_one: 'Delete {{count}} node?',

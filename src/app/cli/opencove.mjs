@@ -2,15 +2,15 @@
 
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 import { readFlagValue, requireFlagValue, resolveTimeoutMs, stripGlobalOptions } from './args.mjs'
-import { resolveConnectionInfo } from './connection.mjs'
+import { resolveConnectionInfo, resolveWorkerConnectionInfo } from './connection.mjs'
 import { invokeAndPrint, invokeControlSurface } from './invoke.mjs'
 import { printUsage } from './usage.mjs'
 import { CONTROL_SURFACE_PROTOCOL_VERSION } from './constants.mjs'
+import { resolveCliRuntime, resolveElectronBinaryForWorkerStart } from './runtime.mjs'
 import { tryHandleMultiEndpointCommands } from './commands/multiEndpoint.mjs'
+import { tryHandleNodeControlCommands } from './commands/nodeControl.mjs'
 import {
   getWorkerLifecycleStatus,
   printWorkerLifecycleResult,
@@ -47,12 +47,15 @@ async function main() {
   }
 
   if (command === 'worker' && args[1] === 'start') {
-    const cliDir = resolve(fileURLToPath(new URL('.', import.meta.url)))
-    const repoRoot = resolve(cliDir, '../../..')
-    const workerPath = resolve(repoRoot, 'out', 'main', 'worker.js')
+    const runtime = resolveCliRuntime()
+    const workerPath = runtime.workerScriptPath
 
     if (!existsSync(workerPath)) {
-      process.stderr.write('[opencove] worker is not built. Run `pnpm build` first.\n')
+      process.stderr.write(
+        runtime.kind === 'source'
+          ? '[opencove] worker is not built. Run `pnpm build` first.\n'
+          : `[opencove] worker entry is missing: ${workerPath}\n`,
+      )
       process.exit(2)
     }
 
@@ -62,6 +65,7 @@ async function main() {
     const port = readFlagValue(argv, '--port')
     const userData = readFlagValue(argv, '--user-data')
     const webUiPasswordHash = readFlagValue(argv, '--web-ui-password-hash')
+    const webUiPassword = readFlagValue(argv, '--web-ui-password')
     const approvedRoots = []
 
     for (let index = 0; index < argv.length; index += 1) {
@@ -106,21 +110,15 @@ async function main() {
       workerArgs.push('--web-ui-password-hash', webUiPasswordHash)
     }
 
+    if (webUiPassword) {
+      workerArgs.push('--web-ui-password', webUiPassword)
+    }
+
     for (const root of approvedRoots) {
       workerArgs.push('--approve-root', root)
     }
 
-    let electronBinary = null
-
-    try {
-      const electronImport = await import('electron')
-      const candidate = electronImport?.default ?? electronImport?.['module.exports']
-      if (typeof candidate === 'string' && candidate.trim().length > 0) {
-        electronBinary = candidate
-      }
-    } catch {
-      electronBinary = null
-    }
+    const electronBinary = await resolveElectronBinaryForWorkerStart()
 
     if (!electronBinary) {
       process.stderr.write(
@@ -186,6 +184,7 @@ async function main() {
     }
   }
 
+  const isWorkerStatusCommand = command === 'worker' && args[1] === 'status'
   const capabilitiesRequest = { kind: 'query', id: 'system.capabilities', payload: null }
 
   const connection = endpoint
@@ -211,11 +210,13 @@ async function main() {
 
         return { hostname: parsed.hostname, port, token }
       })()
-    : await resolveConnectionInfo()
+    : await (isWorkerStatusCommand ? resolveWorkerConnectionInfo() : resolveConnectionInfo())
 
   if (!connection) {
     process.stderr.write(
-      '[opencove] control surface is not running (no valid connection info found).\n',
+      isWorkerStatusCommand
+        ? '[opencove] worker control surface is not running (no valid connection info found).\n'
+        : '[opencove] control surface is not running (no valid connection info found).\n',
     )
     process.exit(2)
   }
@@ -264,7 +265,19 @@ async function main() {
     return
   }
 
-  if (command === 'worker' && args[1] === 'status') {
+  if (
+    await tryHandleNodeControlCommands({
+      command,
+      args,
+      connection,
+      pretty,
+      timeoutMs,
+    })
+  ) {
+    return
+  }
+
+  if (isWorkerStatusCommand) {
     await invokeAndPrint(
       connection,
       { kind: 'query', id: 'system.ping', payload: null },

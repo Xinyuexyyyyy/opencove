@@ -12,11 +12,50 @@ describe('normalizeAgentSettings', () => {
     expect(DEFAULT_AGENT_SETTINGS.agentEnvByProvider['claude-code']).toEqual([])
     expect(DEFAULT_AGENT_SETTINGS.agentEnvByProvider.opencode).toEqual([])
     expect(DEFAULT_AGENT_SETTINGS.agentEnvByProvider.gemini).toEqual([])
+    expect(DEFAULT_AGENT_SETTINGS.agentExecutablePathOverrideByProvider).toEqual({
+      'claude-code': '',
+      codex: '',
+      opencode: '',
+      gemini: '',
+    })
   })
 
   it('keeps the default terminal profile unset by default', () => {
     expect(DEFAULT_AGENT_SETTINGS.defaultTerminalProfileId).toBeNull()
     expect(normalizeAgentSettings({}).defaultTerminalProfileId).toBeNull()
+  })
+
+  it('defaults and normalizes terminal display reference and compensation toggles', () => {
+    expect(DEFAULT_AGENT_SETTINGS.terminalDisplayAutoReferenceEnabled).toBe(true)
+    expect(DEFAULT_AGENT_SETTINGS.terminalDisplayCalibrationCompensationEnabled).toBe(true)
+    expect(normalizeAgentSettings({}).terminalDisplayAutoReferenceEnabled).toBe(true)
+    expect(normalizeAgentSettings({}).terminalDisplayCalibrationCompensationEnabled).toBe(true)
+    expect(
+      normalizeAgentSettings({
+        terminalDisplayAutoReferenceEnabled: false,
+        terminalDisplayCalibrationCompensationEnabled: false,
+      }),
+    ).toMatchObject({
+      terminalDisplayAutoReferenceEnabled: false,
+      terminalDisplayCalibrationCompensationEnabled: false,
+    })
+    expect(
+      normalizeAgentSettings({
+        terminalDisplayAutoReferenceEnabled: 'off',
+        terminalDisplayCalibrationCompensationEnabled: 'off',
+      }),
+    ).toMatchObject({
+      terminalDisplayAutoReferenceEnabled: true,
+      terminalDisplayCalibrationCompensationEnabled: true,
+    })
+  })
+
+  it('keeps compatibility with the temporary terminal display auto-calibration field', () => {
+    expect(
+      normalizeAgentSettings({
+        terminalDisplayAutoCalibrationEnabled: false,
+      }).terminalDisplayAutoReferenceEnabled,
+    ).toBe(false)
   })
 
   it('restores a persisted terminal profile id when it is present', () => {
@@ -163,6 +202,22 @@ describe('normalizeAgentSettings', () => {
       { id: 'row-1', key: 'FOO', value: 'bar', enabled: true },
     ])
     expect(settings.agentEnvByProvider.gemini).toEqual([])
+  })
+
+  it('normalizes executable path overrides by provider', () => {
+    const settings = normalizeAgentSettings({
+      agentExecutablePathOverrideByProvider: {
+        codex: '  /opt/tools/codex  ',
+        opencode: 123,
+      },
+    })
+
+    expect(settings.agentExecutablePathOverrideByProvider).toEqual({
+      'claude-code': '',
+      codex: '/opt/tools/codex',
+      opencode: '',
+      gemini: '',
+    })
   })
 
   it('defaults experimental remote workers to disabled', () => {

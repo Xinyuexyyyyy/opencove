@@ -1,5 +1,6 @@
 import type { TranslationDictionary } from './schema'
 
+import { zhCNCommonRemoteEndpoints } from './zh-CN.commonRemoteEndpoints'
 import { zhCNMessages } from './zh-CN.messages'
 import { zhCNShell } from './zh-CN.shell'
 import { zhCNSpaceExplorer } from './zh-CN.spaceExplorer'
@@ -35,6 +36,7 @@ export const zhCN = {
     percentUnit: '%',
     pixelUnit: 'px',
     minuteUnit: '分钟',
+    remoteEndpoints: zhCNCommonRemoteEndpoints,
   },
   taskPriorities: {
     low: '低',
@@ -56,6 +58,8 @@ export const zhCN = {
     noProjectYet: '还没有项目。',
     settings: '设置',
     fallbackAgentLabel: 'Agent',
+    expandProjectAgents: '展开项目 Agent 列表',
+    collapseProjectAgents: '折叠项目 Agent 列表',
     status: {
       working: '运行中',
       standby: '待命',
@@ -86,7 +90,7 @@ export const zhCN = {
     sidebar: '侧边栏',
     minimap: '缩略图',
     theme: '主题',
-    agentStandbyBanner: 'Agent 完成提醒',
+    agentStandbyBanner: '右上角横幅',
     on: '已开启',
     off: '已关闭',
   },
@@ -187,6 +191,10 @@ export const zhCN = {
     description: '每个项目都有自己的无限画布和终端。',
     action: '添加项目',
   },
+  appStartupState: {
+    title: '正在打开工作区',
+    description: '正在恢复项目、Space 和终端…',
+  },
   appMessage: {
     info: '提示',
     warning: '警告',
@@ -263,6 +271,11 @@ export const zhCN = {
   noteNode: {
     title: '便签',
     deleteNote: '删除便签',
+    saveMarkdown: '保存为 Markdown',
+    saveMarkdownPrompt: 'Markdown 文件名',
+    defaultFileName: '便签.md',
+    invalidFileName: '请输入有效文件名。',
+    savedMarkdown: '已保存到 {{path}}',
     resizeWidth: '调整便签宽度',
     resizeHeight: '调整便签高度',
   },
@@ -275,10 +288,14 @@ export const zhCN = {
     retry: '重试',
     filesystemUnavailable: '文件系统不可用。',
     notAFile: '这不是一个文件。',
+    binaryReadUnavailable: '当前环境无法加载音频或视频预览。',
     binaryTitle: '二进制文件',
     binaryMessage: '该文件似乎是二进制或使用了不受支持的编码，无法以文本方式打开。',
     tooLargeTitle: '文件过大',
     tooLargeMessage: '该文件过大，无法在画布编辑器中打开。',
+    mediaUnsupportedTitle: '无法播放媒体',
+    mediaUnsupportedMessage:
+      '这个音频或视频文件当前无法在这里播放。OpenCove 目前会在运行环境支持时预览 MP3、WAV/WAVE、OGG/OGA、MP4 和 WebM。',
   },
   imageNode: {
     title: '图片',
@@ -290,6 +307,7 @@ export const zhCN = {
   terminalNode: {
     resizeWidth: '调整终端宽度',
     resizeHeight: '调整终端高度',
+    recoveringAgentSession: '正在恢复实时 Agent 会话…',
   },
   terminalFind: {
     placeholder: '查找…',
@@ -304,6 +322,26 @@ export const zhCN = {
     directoryMismatchTitle: '绑定目录：{{executionDirectory}}\n原目录：{{expectedDirectory}}',
     copyLastMessage: '复制上一条 Agent 消息',
     copyingLastMessage: '正在复制上一条 Agent 消息',
+    reloadSession: '重载会话',
+    reloadingSession: '正在重载会话',
+    sessionList: '会话列表',
+    loadingSessions: '正在加载会话',
+    noSessions: '当前目录下没有可用会话。',
+    sessionLoadFailed: '加载会话失败。',
+    currentSession: '当前会话',
+    sessionUpdatedAt: '更新时间 {{timestamp}}',
+    sessionSwitchDialog: {
+      title: '切换会话？',
+      description: '这会重启当前 Agent 窗口，并切换到所选会话。',
+      targetSession: '目标会话',
+      targetSessionId: '会话 ID',
+      targetDirectory: '目标目录',
+      currentDirectory: '当前目录',
+      mismatch: '所选会话绑定到不同目录。只有在你明确知道后果时才继续。',
+      aligned: '所选会话与当前目录一致。',
+      switch: '切换会话',
+      switching: '切换中...',
+    },
   },
   nodeDeleteDialog: {
     deleteNodes_one: '删除 {{count}} 个节点？',

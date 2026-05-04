@@ -14,7 +14,7 @@ import { createAppUpdateService } from '../../../contexts/update/infrastructure/
 import { registerReleaseNotesIpcHandlers } from '../../../contexts/releaseNotes/presentation/main-ipc/register'
 import { createReleaseNotesService } from '../../../contexts/releaseNotes/infrastructure/main/ReleaseNotesService'
 import { registerFilesystemIpcHandlers } from '../../../contexts/filesystem/presentation/main-ipc/register'
-import { app, ipcMain } from 'electron'
+import { app } from 'electron'
 import type { PersistenceStore } from '../../../platform/persistence/sqlite/PersistenceStore'
 import { createPersistenceStore } from '../../../platform/persistence/sqlite/PersistenceStore'
 import { registerPersistenceIpcHandlers } from '../../../platform/persistence/sqlite/ipc/register'
@@ -36,13 +36,7 @@ import { registerCliIpcHandlers } from './registerCliIpcHandlers'
 import { registerRemoteAgentIpcHandlers } from './registerRemoteAgentIpcHandlers'
 import { registerWebsiteWindowIpcHandlers } from './registerWebsiteWindowIpcHandlers'
 import { registerControlSurfaceIpcHandlers } from './registerControlSurfaceIpcHandlers'
-import { IPC_CHANNELS } from '../../../shared/contracts/ipc'
-import { registerHandledIpc } from './handle'
-import {
-  createPtyAgentPlaceholderMirror,
-  createPtyScrollbackMirror,
-  normalizePtySessionNodeBindingsPayload,
-} from './ptyScrollbackMirror'
+import { createPersistedWorkspaceApprovalGate } from '../../../contexts/workspace/infrastructure/approval/PersistedWorkspaceApproval'
 
 export type { IpcRegistrationDisposable } from './types'
 
@@ -62,13 +56,6 @@ export function registerIpcHandlers(deps?: {
   const ptyRuntime = workerEndpointResolver
     ? createRemotePtyRuntime({ endpointResolver: workerEndpointResolver })
     : (deps?.ptyRuntime ?? createPtyRuntime())
-
-  const ptyApprovedWorkspaces = workerEndpointResolver
-    ? {
-        registerRoot: async () => undefined,
-        isPathApproved: async () => true,
-      }
-    : approvedWorkspaces
 
   let persistenceStorePromise: Promise<PersistenceStore> | null = null
   const getPersistenceStore = async (): Promise<PersistenceStore> => {
@@ -94,66 +81,6 @@ export function registerIpcHandlers(deps?: {
     return await persistenceStorePromise
   }
 
-  if (process.env.NODE_ENV === 'test' && process.env.OPENCOVE_TEST_WORKSPACE) {
-    void approvedWorkspaces.registerRoot(resolve(process.env.OPENCOVE_TEST_WORKSPACE))
-  }
-
-  const scrollbackMirror = createPtyScrollbackMirror({
-    source: {
-      snapshot: sessionId => ptyRuntime.snapshot(sessionId),
-    },
-    getPersistenceStore,
-  })
-
-  const agentPlaceholderMirror = createPtyAgentPlaceholderMirror({
-    source: {
-      snapshot: sessionId => ptyRuntime.snapshot(sessionId),
-    },
-    getPersistenceStore,
-  })
-
-  let mirrorDisposePromise: Promise<void> | null = null
-
-  registerHandledIpc(
-    IPC_CHANNELS.ptySyncSessionBindings,
-    async (_event, payload: unknown): Promise<void> => {
-      const normalized = normalizePtySessionNodeBindingsPayload(payload)
-
-      const MAX_BINDINGS = 15_000
-      const limitedBindings =
-        normalized.bindings.length > MAX_BINDINGS
-          ? normalized.bindings.slice(0, MAX_BINDINGS)
-          : normalized.bindings
-
-      scrollbackMirror.setBindings(limitedBindings)
-    },
-    { defaultErrorCode: 'common.unexpected' },
-  )
-
-  registerHandledIpc(
-    IPC_CHANNELS.ptySyncAgentPlaceholderBindings,
-    async (_event, payload: unknown): Promise<void> => {
-      const normalized = normalizePtySessionNodeBindingsPayload(payload)
-
-      const MAX_BINDINGS = 15_000
-      const limitedBindings =
-        normalized.bindings.length > MAX_BINDINGS
-          ? normalized.bindings.slice(0, MAX_BINDINGS)
-          : normalized.bindings
-
-      agentPlaceholderMirror.setBindings(limitedBindings)
-    },
-    { defaultErrorCode: 'common.unexpected' },
-  )
-
-  registerHandledIpc(
-    IPC_CHANNELS.ptyFlushScrollbackMirrors,
-    async (): Promise<void> => {
-      await Promise.allSettled([scrollbackMirror.flush(), agentPlaceholderMirror.flush()])
-    },
-    { defaultErrorCode: 'common.unexpected' },
-  )
-
   const workspaceApprovedWorkspaces = workerEndpointResolver
     ? {
         ...approvedWorkspaces,
@@ -176,6 +103,27 @@ export function registerIpcHandlers(deps?: {
       }
     : approvedWorkspaces
 
+  const startupApprovalRoots =
+    process.env.NODE_ENV === 'test' && process.env.OPENCOVE_TEST_WORKSPACE
+      ? [resolve(process.env.OPENCOVE_TEST_WORKSPACE)]
+      : []
+
+  const startupApprovedWorkspaces = createPersistedWorkspaceApprovalGate({
+    approvedWorkspaces: workspaceApprovedWorkspaces,
+    readAppState: async () => {
+      const store = await getPersistenceStore()
+      return await store.readAppState()
+    },
+    extraRoots: startupApprovalRoots,
+    onError: error => {
+      const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+      process.stderr.write(
+        `[opencove] Failed to hydrate approved workspaces from persistence: ${detail}\n`,
+      )
+    },
+  })
+  const guardedApprovedWorkspaces = startupApprovedWorkspaces.approvedWorkspaces
+
   const disposables: IpcRegistrationDisposable[] = [
     registerLocalWorkerIpcHandlers(),
     registerWorkerClientIpcHandlers(),
@@ -184,19 +132,23 @@ export function registerIpcHandlers(deps?: {
     registerClipboardIpcHandlers(),
     registerAppUpdateIpcHandlers(appUpdateService),
     registerReleaseNotesIpcHandlers(releaseNotesService),
-    registerWorkspaceIpcHandlers(workspaceApprovedWorkspaces),
-    registerFilesystemIpcHandlers(approvedWorkspaces),
+    registerWorkspaceIpcHandlers(guardedApprovedWorkspaces),
+    registerFilesystemIpcHandlers(guardedApprovedWorkspaces),
     registerPersistenceIpcHandlers(getPersistenceStore),
-    registerWorktreeIpcHandlers(approvedWorkspaces),
-    registerIntegrationIpcHandlers(approvedWorkspaces),
+    registerWorktreeIpcHandlers(guardedApprovedWorkspaces),
+    registerIntegrationIpcHandlers(guardedApprovedWorkspaces),
     registerWindowChromeIpcHandlers(),
     registerWindowMetricsIpcHandlers(),
     registerDiagnosticsIpcHandlers(),
-    registerPtyIpcHandlers(ptyRuntime, ptyApprovedWorkspaces),
+    registerPtyIpcHandlers(ptyRuntime, guardedApprovedWorkspaces),
     workerEndpointResolver
-      ? registerRemoteAgentIpcHandlers({ endpointResolver: workerEndpointResolver, ptyRuntime })
-      : registerAgentIpcHandlers(ptyRuntime, approvedWorkspaces),
-    registerTaskIpcHandlers(approvedWorkspaces),
+      ? registerRemoteAgentIpcHandlers({
+          endpointResolver: workerEndpointResolver,
+          ptyRuntime,
+          startupReady: startupApprovedWorkspaces.ready,
+        })
+      : registerAgentIpcHandlers(ptyRuntime, guardedApprovedWorkspaces, getPersistenceStore),
+    registerTaskIpcHandlers(guardedApprovedWorkspaces),
     registerSystemIpcHandlers(),
     registerWebsiteWindowIpcHandlers(),
   ]
@@ -204,18 +156,6 @@ export function registerIpcHandlers(deps?: {
   if (workerEndpointResolver) {
     disposables.push(registerWorkerSyncBridge(workerEndpointResolver))
   }
-
-  disposables.push({
-    dispose: () => {
-      ipcMain.removeHandler(IPC_CHANNELS.ptySyncSessionBindings)
-      ipcMain.removeHandler(IPC_CHANNELS.ptySyncAgentPlaceholderBindings)
-      ipcMain.removeHandler(IPC_CHANNELS.ptyFlushScrollbackMirrors)
-      mirrorDisposePromise ??= Promise.allSettled([
-        scrollbackMirror.dispose(),
-        agentPlaceholderMirror.dispose(),
-      ]).then(() => undefined)
-    },
-  })
 
   return {
     dispose: () => {
@@ -225,9 +165,7 @@ export function registerIpcHandlers(deps?: {
 
       const storePromise = persistenceStorePromise
       persistenceStorePromise = null
-      const pendingMirrorDispose = mirrorDisposePromise ?? Promise.resolve()
-      void pendingMirrorDispose
-        .then(() => storePromise)
+      void Promise.resolve(storePromise)
         .then(store => {
           store?.dispose()
         })
